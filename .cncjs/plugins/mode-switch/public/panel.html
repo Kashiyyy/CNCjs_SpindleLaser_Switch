@@ -1,0 +1,83 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+body{font-family:Arial;text-align:center;padding:20px}
+#box{padding:20px;border-radius:12px;color:white;font-size:18px;margin-bottom:10px}
+button{padding:10px}
+</style>
+</head>
+<body>
+
+<div id="box">Loading...</div>
+<button onclick="toggle()">Toggle Mode</button>
+
+<h3>Preset</h3>
+<select id="preset"></select>
+
+<h3>GPIO Pin</h3>
+<input id="gpio" type="number">
+<button onclick="save()">Save</button>
+
+<script>
+
+let cfg={};
+
+async function load(){
+  const res=await fetch('/mode-switch/state');
+  const data=await res.json();
+  cfg=data.config;
+
+  document.getElementById("gpio").value=cfg.gpio?.pin||17;
+
+  updateUI(data);
+  buildPresets(data.mode);
+}
+
+function updateUI(data){
+  const box=document.getElementById("box");
+  let color=data.mode==="laser"?"red":"blue";
+  box.style.background=color;
+  box.innerHTML=data.mode.toUpperCase()+"<br>"+data.machine;
+}
+
+function buildPresets(mode){
+  const sel=document.getElementById("preset");
+  sel.innerHTML="";
+  const mats=cfg.materials?.[mode]||{};
+  for(const k in mats){
+    let o=document.createElement("option");
+    o.value=k;
+    o.text=mats[k].label||k;
+    sel.appendChild(o);
+  }
+}
+
+async function toggle(){
+  await fetch('/mode-switch/toggle');
+  load();
+}
+
+async function save(){
+  const res=await fetch('/mode-switch/config');
+  const c=await res.json();
+
+  c.gpio={pin:Number(document.getElementById("gpio").value)};
+  c.active=c.active||{};
+  c.active.laser=document.getElementById("preset").value;
+
+  await fetch('/mode-switch/config',{
+    method:"POST",
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(c)
+  });
+
+  alert("saved");
+}
+
+load();
+
+</script>
+</body>
+</html>
