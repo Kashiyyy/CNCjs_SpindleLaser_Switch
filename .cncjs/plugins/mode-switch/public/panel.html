@@ -2,81 +2,139 @@
 <!DOCTYPE html>
 <html>
 <head>
+<meta charset="UTF-8">
 <style>
-body{font-family:Arial;text-align:center;padding:20px}
-#box{padding:20px;border-radius:12px;color:white;font-size:18px;margin-bottom:10px}
-button{padding:10px}
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; text-align: center; padding: 15px; background: #f8f9fa; color: #333; }
+.card { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); padding: 20px; margin-bottom: 20px; }
+#status { font-size: 24px; font-weight: bold; margin-bottom: 10px; padding: 10px; border-radius: 4px; }
+.mode-laser { background-color: #dc3545; color: white; }
+.mode-spindle { background-color: #007bff; color: white; }
+.machine-state { font-size: 14px; margin-bottom: 20px; color: #666; }
+button { cursor: pointer; padding: 10px 20px; font-size: 16px; border: none; border-radius: 4px; transition: opacity 0.2s; }
+button:disabled { cursor: not-allowed; opacity: 0.5; }
+.btn-toggle { background-color: #28a745; color: white; margin-bottom: 20px; width: 100%; }
+.btn-save { background-color: #6c757d; color: white; font-size: 14px; padding: 5px 10px; }
+.config-section { text-align: left; border-top: 1px solid #eee; padding-top: 15px; }
+.config-group { margin-bottom: 10px; }
+label { display: block; font-size: 12px; font-weight: bold; margin-bottom: 3px; }
+input { width: 100%; padding: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 3px; }
 </style>
 </head>
 <body>
 
-<div id="box">Loading...</div>
-<button onclick="toggle()">Toggle Mode</button>
+<div class="card">
+    <div id="status" class="mode-spindle">SPINDLE</div>
+    <div class="machine-state">Machine: <span id="machine">Unknown</span></div>
 
-<h3>Preset</h3>
-<select id="preset"></select>
+    <button id="toggleBtn" class="btn-toggle" onclick="toggleMode()">Switch to LASER</button>
+</div>
 
-<h3>GPIO Pin</h3>
-<input id="gpio" type="number">
-<button onclick="save()">Save</button>
+<div class="card config-section">
+    <h4>Settings</h4>
+    <div id="config-ui"></div>
+    <button class="btn-save" onclick="saveConfig()">Save Config</button>
+</div>
 
 <script>
+let currentMode = 'spindle';
+let machineState = 'Unknown';
+let config = {};
 
-let cfg={};
+async function refresh() {
+    try {
+        const res = await fetch('/mode-switch/state');
+        const data = await res.json();
 
-async function load(){
-  const res=await fetch('/mode-switch/state');
-  const data=await res.json();
-  cfg=data.config;
+        currentMode = data.mode;
+        machineState = data.machine;
+        config = data.config;
 
-  document.getElementById("gpio").value=cfg.gpio?.pin||17;
-
-  updateUI(data);
-  buildPresets(data.mode);
+        updateUI();
+    } catch (e) {
+        console.error("Failed to fetch state", e);
+    }
 }
 
-function updateUI(data){
-  const box=document.getElementById("box");
-  let color=data.mode==="laser"?"red":"blue";
-  box.style.background=color;
-  box.innerHTML=data.mode.toUpperCase()+"<br>"+data.machine;
+function updateUI() {
+    const statusEl = document.getElementById("status");
+    const machineEl = document.getElementById("machine");
+    const toggleBtn = document.getElementById("toggleBtn");
+
+    statusEl.innerText = currentMode.toUpperCase();
+    statusEl.className = currentMode === 'laser' ? 'mode-laser' : 'mode-spindle';
+
+    machineEl.innerText = machineState;
+
+    toggleBtn.innerText = `Switch to ${currentMode === 'laser' ? 'SPINDLE' : 'LASER'}`;
+    toggleBtn.disabled = machineState !== 'Idle' && machineState !== 'Unknown';
+
+    if (Object.keys(config).length > 0 && !document.getElementById('config-ui').innerHTML) {
+        renderConfig();
+    }
 }
 
-function buildPresets(mode){
-  const sel=document.getElementById("preset");
-  sel.innerHTML="";
-  const mats=cfg.materials?.[mode]||{};
-  for(const k in mats){
-    let o=document.createElement("option");
-    o.value=k;
-    o.text=mats[k].label||k;
-    sel.appendChild(o);
-  }
+function renderConfig() {
+    const container = document.getElementById('config-ui');
+    container.innerHTML = '';
+
+    ['spindle', 'laser'].forEach(mode => {
+        const div = document.createElement('div');
+        div.innerHTML = `<h5>${mode.toUpperCase()} Settings</h5>`;
+        for (const key in config[mode]) {
+            if (key !== 'commands') {
+                const group = document.createElement('div');
+                group.className = 'config-group';
+                group.innerHTML = `
+                    <label>${key}</label>
+                    <input type="text" data-mode="${mode}" data-key="${key}" value="${config[mode][key]}">
+                `;
+                div.appendChild(group);
+            }
+        }
+        container.appendChild(div);
+    });
 }
 
-async function toggle(){
-  await fetch('/mode-switch/toggle');
-  load();
+async function toggleMode() {
+    const toggleBtn = document.getElementById("toggleBtn");
+    toggleBtn.disabled = true;
+
+    try {
+        const res = await fetch('/mode-switch/toggle', { method: 'POST' });
+        const data = await res.json();
+        if (!data.ok) {
+            alert("Error: " + data.error);
+        }
+        refresh();
+    } catch (e) {
+        alert("Toggle failed");
+        toggleBtn.disabled = false;
+    }
 }
 
-async function save(){
-  const res=await fetch('/mode-switch/config');
-  const c=await res.json();
+async function saveConfig() {
+    const inputs = document.querySelectorAll('#config-ui input');
+    inputs.forEach(input => {
+        const mode = input.dataset.mode;
+        const key = input.dataset.key;
+        config[mode][key] = isNaN(input.value) ? input.value : Number(input.value);
+    });
 
-  c.gpio={pin:Number(document.getElementById("gpio").value)};
-  c.active=c.active||{};
-  c.active.laser=document.getElementById("preset").value;
-
-  await fetch('/mode-switch/config',{
-    method:"POST",
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(c)
-  });
-
-  alert("saved");
+    try {
+        await fetch('/mode-switch/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+        alert("Config saved");
+    } catch (e) {
+        alert("Save failed");
+    }
 }
 
-load();
+// Polling for state updates
+setInterval(refresh, 2000);
+refresh();
 
 </script>
 </body>
