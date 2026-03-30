@@ -47,6 +47,61 @@ const ModeIndicator = styled.span`
     color: ${props => props.$mode === 'Laser' ? '#d9534f' : '#5bc0de'};
 `;
 
+const SettingsSection = styled.div`
+    margin-top: 20px;
+    padding-top: 10px;
+    border-top: 1px solid #eee;
+`;
+
+const SettingsTitle = styled.div`
+    font-weight: bold;
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    font-size: 14px;
+    color: #333;
+`;
+
+const Grid = styled.div`
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 5px;
+    font-size: 12px;
+    margin-bottom: 10px;
+`;
+
+const Input = styled.input`
+    width: 100%;
+    padding: 2px 5px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+`;
+
+const Label = styled.label`
+    display: block;
+    margin-bottom: 2px;
+    color: #666;
+`;
+
+const DEFAULT_SETTINGS = {
+    spindel: {
+        $30: 24000,
+        $110: 2000,
+        $111: 2000,
+        $120: 100,
+        $121: 100
+    },
+    laser: {
+        $30: 1000,
+        $110: 5000,
+        $111: 5000,
+        $120: 500,
+        $121: 500
+    }
+};
+
 class App extends PureComponent {
     state = {
         port: controller.port,
@@ -54,7 +109,9 @@ class App extends PureComponent {
             type: controller.type,
             state: controller.state
         },
-        currentMode: 'Spindel' // Default mode
+        currentMode: localStorage.getItem('CNCjs_SpindelLaser_Switch_CurrentMode') || 'Spindel',
+        showSettings: false,
+        settings: this.loadSettings()
     };
 
     controllerEvent = {
@@ -98,38 +155,80 @@ class App extends PureComponent {
         });
     }
 
+    loadSettings() {
+        const saved = localStorage.getItem('CNCjs_SpindelLaser_Switch_Settings');
+        if (saved) {
+            try {
+                return JSON.parse(saved);
+            } catch (e) {
+                return DEFAULT_SETTINGS;
+            }
+        }
+        return DEFAULT_SETTINGS;
+    }
+
+    saveSettings(settings) {
+        localStorage.setItem('CNCjs_SpindelLaser_Switch_Settings', JSON.stringify(settings));
+    }
+
+    handleSettingChange = (mode, key, value) => {
+        this.setState(prevState => {
+            const newSettings = {
+                ...prevState.settings,
+                [mode]: {
+                    ...prevState.settings[mode],
+                    [key]: value
+                }
+            };
+            this.saveSettings(newSettings);
+            return { settings: newSettings };
+        });
+    };
+
+    sendGrblCommands = (commands) => {
+        commands.forEach(cmd => {
+            console.log('Sending command to Grbl:', cmd);
+            // use controller.command('gcode') to send $-commands
+            controller.command('gcode', cmd);
+        });
+    };
+
     switchToLaser = () => {
         if (!this.canSwitch()) return;
+        const { settings } = this.state;
+        const s = settings.laser;
 
-        // Laser Mode Settings ($32=1)
         const commands = [
-            '$32=1', // Laser mode enabled
-            '$30=1000', // Max spindle speed (S1000)
-            '$110=5000', // X-axis max rate
-            '$111=5000', // Y-axis max rate
-            '$120=500', // X-axis acceleration
-            '$121=500'  // Y-axis acceleration
+            '$32=1',
+            `$30=${s.$30}`,
+            `$110=${s.$110}`,
+            `$111=${s.$111}`,
+            `$120=${s.$120}`,
+            `$121=${s.$121}`
         ];
 
-        commands.forEach(cmd => controller.writeline(cmd));
+        this.sendGrblCommands(commands);
         this.setState({ currentMode: 'Laser' });
+        localStorage.setItem('CNCjs_SpindelLaser_Switch_CurrentMode', 'Laser');
     };
 
     switchToSpindel = () => {
         if (!this.canSwitch()) return;
+        const { settings } = this.state;
+        const s = settings.spindel;
 
-        // Spindel Mode Settings ($32=0)
         const commands = [
-            '$32=0', // Laser mode disabled
-            '$30=24000', // Max spindle speed
-            '$110=2000', // X-axis max rate
-            '$111=2000', // Y-axis max rate
-            '$120=100', // X-axis acceleration
-            '$121=100'  // Y-axis acceleration
+            '$32=0',
+            `$30=${s.$30}`,
+            `$110=${s.$110}`,
+            `$111=${s.$111}`,
+            `$120=${s.$120}`,
+            `$121=${s.$121}`
         ];
 
-        commands.forEach(cmd => controller.writeline(cmd));
+        this.sendGrblCommands(commands);
         this.setState({ currentMode: 'Spindel' });
+        localStorage.setItem('CNCjs_SpindelLaser_Switch_CurrentMode', 'Spindel');
     };
 
     canSwitch = () => {
@@ -141,7 +240,7 @@ class App extends PureComponent {
     };
 
     render() {
-        const { port, controller: { type, state }, currentMode } = this.state;
+        const { port, controller: { type, state }, currentMode, showSettings, settings } = this.state;
         const activeState = get(state, 'status.activeState');
         const isIdle = activeState === GRBL_ACTIVE_STATE_IDLE;
         const isGrbl = type === GRBL;
@@ -192,6 +291,62 @@ class App extends PureComponent {
                         Laser Mode
                     </Button>
                 </ButtonGroup>
+
+                <SettingsSection>
+                    <SettingsTitle onClick={() => this.setState({ showSettings: !showSettings })}>
+                        <span>Settings {showSettings ? '▲' : '▼'}</span>
+                    </SettingsTitle>
+                    {showSettings && (
+                        <div>
+                            <div style={{ fontWeight: 'bold', fontSize: '12px', marginBottom: '5px' }}>Spindel Settings</div>
+                            <Grid>
+                                <div>
+                                    <Label>$30 (Max S)</Label>
+                                    <Input type="number" value={settings.spindel.$30} onChange={e => this.handleSettingChange('spindel', '$30', e.target.value)} />
+                                </div>
+                                <div>
+                                    <Label>$110 (X Rate)</Label>
+                                    <Input type="number" value={settings.spindel.$110} onChange={e => this.handleSettingChange('spindel', '$110', e.target.value)} />
+                                </div>
+                                <div>
+                                    <Label>$111 (Y Rate)</Label>
+                                    <Input type="number" value={settings.spindel.$111} onChange={e => this.handleSettingChange('spindel', '$111', e.target.value)} />
+                                </div>
+                                <div>
+                                    <Label>$120 (X Accel)</Label>
+                                    <Input type="number" value={settings.spindel.$120} onChange={e => this.handleSettingChange('spindel', '$120', e.target.value)} />
+                                </div>
+                                <div>
+                                    <Label>$121 (Y Accel)</Label>
+                                    <Input type="number" value={settings.spindel.$121} onChange={e => this.handleSettingChange('spindel', '$121', e.target.value)} />
+                                </div>
+                            </Grid>
+                            <div style={{ fontWeight: 'bold', fontSize: '12px', marginBottom: '5px', marginTop: '10px' }}>Laser Settings</div>
+                            <Grid>
+                                <div>
+                                    <Label>$30 (Max S)</Label>
+                                    <Input type="number" value={settings.laser.$30} onChange={e => this.handleSettingChange('laser', '$30', e.target.value)} />
+                                </div>
+                                <div>
+                                    <Label>$110 (X Rate)</Label>
+                                    <Input type="number" value={settings.laser.$110} onChange={e => this.handleSettingChange('laser', '$110', e.target.value)} />
+                                </div>
+                                <div>
+                                    <Label>$111 (Y Rate)</Label>
+                                    <Input type="number" value={settings.laser.$111} onChange={e => this.handleSettingChange('laser', '$111', e.target.value)} />
+                                </div>
+                                <div>
+                                    <Label>$120 (X Accel)</Label>
+                                    <Input type="number" value={settings.laser.$120} onChange={e => this.handleSettingChange('laser', '$120', e.target.value)} />
+                                </div>
+                                <div>
+                                    <Label>$121 (Y Accel)</Label>
+                                    <Input type="number" value={settings.laser.$121} onChange={e => this.handleSettingChange('laser', '$121', e.target.value)} />
+                                </div>
+                            </Grid>
+                        </div>
+                    )}
+                </SettingsSection>
             </Container>
         );
     }
