@@ -1,75 +1,72 @@
-# cncjs-widget-boilerplate
+# CNCjs_SpindelLaser_Switch
 
-**Custom Widget for CNCjs**
-
-## Version Compatibility
-
-Custom Widget Version | CNCjs Version
-:-------------------- | :------------
-0.x                   | 1.9.10 or 1.9.11
-1.x                   | >=1.9.12 or later patch versions
-2.x                   | >=2.0.0 or later versions
+Ein Custom Widget für CNCjs zum Umschalten zwischen Spindel und Laser.
 
 ## Installation
 
+Folge diesen Schritten, um das Widget zu installieren und in CNCjs zu integrieren:
+
+### 1. Repository klonen
+
+Klone dieses Repository auf deinen Computer oder Raspberry Pi:
+
 ```bash
-yarn install
+git clone https://github.com/cncjs/CNCjs_SpindelLaser_Switch.git
+cd CNCjs_SpindelLaser_Switch
 ```
 
-## Development Guide
+### 2. Abhängigkeiten installieren
 
-Create a directory under <b>src/widgets</b> and put your code in there.
+Verwende `npm`, um die notwendigen Pakete zu installieren:
 
-```
-src/
-   widgets/
-      custom/index.jsx
-```
-
-Run `yarn dev` to start a development server.
-
-### Query Parameters
-
-Name | Description
-:--- | :----------
-token | (Required) An authentication token to enable secure communication. The token will be automatically set by CNCjs.
-host | (Optional) Specifies the host to connect to. Defaults to an empty string.
-
-### Examples
-
-![image](https://user-images.githubusercontent.com/447801/30728983-b866f4b6-9f8e-11e7-9a90-6b712344d270.png)
-
-## Development
-
-Run `npm run dev` to start a local development server for development, then connect to http://localhost:5000 and wait until bundle finished.
-
-You can specify a mount path to test your widgets with CNCjs:
 ```bash
-cncjs -vv --mount /widget:/path/to/cncjs-widget-boilerplate/dist
+npm install
 ```
 
-## Production
+### 3. Widget bauen
 
-Run `npm run prepublish` to build production code. It will output index.html, fonts, images, and JavaScript files to the dist folder.
+Erstelle die Produktionsdateien im `dist`-Ordner:
 
-After that, you can copy all dist files to a directory (e.g. /home/widget), and specify a mount path for the static directory, as shown below:
 ```bash
-mkdir -p /home/widget
-cp -af /path/to/cncjs-widget-boilerplate/dist/* /home/widget
-cncjs --mount /widget:/home/widget
+npm run build
 ```
 
-### Configure CNCjs
+### 4. Widget in CNCjs bereitstellen
 
-1. Click <b>Manage Widgets</b> to add a custom widget<br>
-    ![image](https://user-images.githubusercontent.com/447801/30728946-78e1d860-9f8e-11e7-96c5-e8bbd06b1c0f.png)
+Verschiebe die gebauten Dateien an einen permanenten Ort (z.B. `/home/pi/cncjs-widgets/spindel-laser-switch`):
 
-2. Click the <img src="https://cdn.rawgit.com/cncjs/cncjs/master/media/font-awesome/black/svg/cog.svg" width="16" title="Edit" /> icon to configure widget settings<br>
-    ![image](https://user-images.githubusercontent.com/447801/30729069-593dc4dc-9f8f-11e7-8a63-1e46249bbe34.png)
+```bash
+mkdir -p /home/pi/cncjs-widgets/spindel-laser-switch
+cp -af dist/* /home/pi/cncjs-widgets/spindel-laser-switch/
+```
 
-3. If everything goes well, you will see the loaded widget, like so:<br>
-    ![image](https://user-images.githubusercontent.com/447801/30728983-b866f4b6-9f8e-11e7-9a90-6b712344d270.png)
+Starte CNCjs mit dem `--mount`-Parameter, um das Widget verfügbar zu machen:
 
-## License
+```bash
+cncjs --mount /widget:/home/pi/cncjs-widgets/spindel-laser-switch
+```
+
+*Hinweis: Wenn du CNCjs bereits als Dienst (z.B. mit pm2) ausführst, musst du die Startparameter in deiner Konfiguration anpassen.*
+
+### 5. In CNCjs konfigurieren
+
+1. Öffne CNCjs im Browser.
+2. Klicke auf **Manage Widgets** (Zahnrad-Icon in der Widget-Leiste).
+3. Aktiviere das **Custom** Widget.
+4. Klicke auf das Bearbeiten-Icon (Schraubenschlüssel/Zahnrad) des neuen Custom Widgets.
+5. Gib die URL für das gemountete Widget ein (Standardmäßig `/widget/`).
+6. Wenn alles korrekt konfiguriert ist, erscheint das Widget in deiner CNCjs-Oberfläche.
+
+## Entwicklung
+
+Um das Widget lokal zu entwickeln:
+
+1. Starte den Entwicklungsserver:
+   ```bash
+   npm run dev
+   ```
+2. Öffne den angezeigten Link (standardmäßig `http://localhost:5173/`).
+
+## Lizenz
 
 MIT
