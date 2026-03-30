@@ -12,62 +12,76 @@ Dieses Plugin ermöglicht das Umschalten zwischen Spindel- und Laser-Modus in CN
 
 ---
 
-## Installations-Guide (Raspberry Pi & Global CNCjs)
+## Installations-Guide (Raspberry Pi & Global NPM)
 
-Folge diesen Schritten, um das Plugin auf einem Raspberry Pi zu installieren, auf dem CNCjs global via `npm install -g cncjs` installiert wurde.
+Folge diesen Schritten, um das Plugin auf einem Raspberry Pi korrekt als globales NPM-Paket zu installieren.
 
-### 1. Repository klonen
-Navigiere in dein Home-Verzeichnis und klone das Repository:
+### 1. Repository klonen & Python Script vorbereiten
 ```bash
 cd ~
 git clone https://github.com/DEIN-USERNAME/CNCjs_SpindleLaser_Switch.git
 cd CNCjs_SpindleLaser_Switch
-```
 
-### 2. Python Script vorbereiten
-Das Script steuert den GPIO Pin 17.
-```bash
-# RPi.GPIO installieren (falls nicht vorhanden)
-sudo apt-get update
-sudo apt-get install python3-rpi.gpio
-
-# Script an die richtige Stelle kopieren und ausführbar machen
+# GPIO-Tool installieren und Script ausführbar machen
+sudo apt-get update && sudo apt-get install -y python3-rpi.gpio
 cp cnc_mode.py /home/pi/cnc_mode.py
 chmod +x /home/pi/cnc_mode.py
 ```
 
-### 3. Plugin als NPM-Paket installieren
-Wenn CNCjs global installiert ist, kann das Plugin ebenfalls global installiert werden:
+### 2. Plugin GLOBAL via NPM installieren
+Wechsle in das Plugin-Unterverzeichnis und installiere es global. Dies macht das Paket systemweit verfügbar (normalerweise unter `/usr/local/lib/node_modules/` oder `/usr/lib/node_modules/`).
 
 ```bash
-# In den Plugin-Ordner wechseln
 cd ~/CNCjs_SpindleLaser_Switch/cncjs-pendant-mode-switch
-
-# Global via NPM installieren
 sudo npm install -g .
 ```
 
-Alternativ kannst du das Plugin auch direkt via Git URL installieren:
+### 3. Plugin in CNCjs registrieren (Symlink)
+CNCjs sucht Plugins standardmäßig im Verzeichnis `~/.cncjs/plugins`. Wir erstellen dort einen Symlink auf das global installierte Paket.
+
+Finde zuerst heraus, wo dein globales `node_modules` liegt:
 ```bash
-sudo npm install -g https://github.com/DEIN-USERNAME/CNCjs_SpindleLaser_Switch.git#main:cncjs-pendant-mode-switch
+npm root -g
+# Beispiel-Ausgabe: /usr/local/lib/node_modules
 ```
 
-### 4. CNCjs Konfiguration
-CNCjs erkennt Plugins in `~/.cncjs/plugins` automatisch. Falls du das Plugin global installiert hast, kannst du es dort verlinken oder CNCjs mitteilen, wo es suchen soll. Der einfachste Weg bei globaler Installation ist:
-
+Verwende diesen Pfad (hier als `/usr/local/lib/node_modules` angenommen), um den Link zu erstellen:
 ```bash
 mkdir -p ~/.cncjs/plugins
 ln -s /usr/local/lib/node_modules/cncjs-pendant-mode-switch ~/.cncjs/plugins/cncjs-pendant-mode-switch
 ```
 
-### 5. CNCjs neu starten
-Damit CNCjs das neue Plugin erkennt, muss der Service neu gestartet werden:
+### 4. CNCjs neu starten
+Damit CNCjs das neue Plugin lädt:
 ```bash
-# Wenn du pm2 benutzt:
+# Falls du pm2 benutzt:
 pm2 restart cncjs
 
-# Oder manuell:
+# Falls es als System-Service läuft:
 sudo systemctl restart cncjs
+```
+
+---
+
+## Fehlerbehebung (Troubleshooting)
+
+### Plugin wird nicht geladen?
+Prüfe, ob der Symlink korrekt ist:
+```bash
+ls -l ~/.cncjs/plugins/cncjs-pendant-mode-switch
+```
+Dies sollte auf den Pfad zeigen, den `npm root -g` ausgegeben hat.
+
+Prüfe die CNCjs Logs auf Fehler beim Laden von Plugins:
+```bash
+# Bei pm2:
+pm2 logs cncjs
+```
+
+### GPIO-Berechtigungen
+Sollte die Umschaltung nicht funktionieren, stelle sicher, dass der Benutzer, unter dem CNCjs läuft (meist `pi`), Zugriff auf GPIO hat:
+```bash
+sudo usermod -a -G gpio pi
 ```
 
 ---
@@ -78,7 +92,6 @@ sudo systemctl restart cncjs
 1. Öffne CNCjs im Browser.
 2. Klicke oben rechts auf **"Manage Widgets"**.
 3. Aktiviere das **"Mode Switcher"** Plugin.
-4. Das Widget erscheint nun in deiner Seitenleiste.
 
 ### Grbl Einstellungen
 Die Werte werden beim Umschalten automatisch gesendet:
@@ -86,7 +99,7 @@ Die Werte werden beim Umschalten automatisch gesendet:
 - **Laser:** `$32=1`, `$30=1000`, `$31=0`, `$110=2000`, `$111=2000` + `M5`
 - **Spindel:** `$32=0`, `$30=10000`, `$31=0`, `$110=1000`, `$111=1000` + `M5`
 
-*Hinweis: Du kannst diese Werte direkt im Plugin-Widget unter "Settings" anpassen und speichern.*
+*Hinweis: Du kannst diese Werte direkt im Plugin-Widget unter "Settings" anpassen.*
 
 ## Hardware-Anschluss
 Verbinde den GPIO-Pin 17 (Pin 11 auf dem Header) mit deiner Hardware:

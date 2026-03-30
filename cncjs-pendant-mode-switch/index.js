@@ -13,10 +13,13 @@ module.exports = function (app) {
   let machineState = "Unknown";
   let controller = null;
 
+  console.log("[ModeSwitch] Plugin initialized at path:", __dirname);
+
   // Track the controller instance
   app.on("serialport:open", (options) => {
     const { port, controller: ctrl } = options;
     controller = ctrl;
+    console.log("[ModeSwitch] Serial port opened:", port);
   });
 
   app.on("serialport:read", (data) => {
@@ -60,7 +63,7 @@ module.exports = function (app) {
     return new Promise((resolve, reject) => {
       exec(`python3 ${PY_SCRIPT}`, (error, stdout, stderr) => {
         if (error) {
-          console.error(`exec error: ${error}`);
+          console.error(`[ModeSwitch] exec error: ${error}`);
           return reject(error);
         }
         resolve(stdout);
@@ -70,12 +73,13 @@ module.exports = function (app) {
 
   function sendGCode(commands) {
     if (!controller) {
-      console.error("No controller connected");
+      console.error("[ModeSwitch] No controller connected to send G-code");
       return;
     }
     commands.forEach(cmd => {
       controller.write(cmd + "\n");
     });
+    console.log("[ModeSwitch] Sent G-code sequence:", commands.join(", "));
   }
 
   // API Routes
@@ -120,4 +124,6 @@ module.exports = function (app) {
   router.use(express.static(publicPath));
 
   app.use("/mode-switch", router);
+
+  console.log("[ModeSwitch] Static assets served from:", publicPath);
 };
