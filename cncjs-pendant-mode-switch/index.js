@@ -13,7 +13,7 @@ module.exports = function (app) {
   let machineState = "Unknown";
   let controller = null;
 
-  console.log("[ModeSwitch] Plugin initialized at path:", __dirname);
+  console.log("[ModeSwitch] Plugin starting up. Path:", __dirname);
 
   // Track the controller instance
   app.on("serialport:open", (options) => {
@@ -63,7 +63,7 @@ module.exports = function (app) {
     return new Promise((resolve, reject) => {
       exec(`python3 ${PY_SCRIPT}`, (error, stdout, stderr) => {
         if (error) {
-          console.error(`[ModeSwitch] exec error: ${error}`);
+          console.error(`[ModeSwitch] GPIO exec error: ${error}`);
           return reject(error);
         }
         resolve(stdout);
@@ -73,16 +73,16 @@ module.exports = function (app) {
 
   function sendGCode(commands) {
     if (!controller) {
-      console.error("[ModeSwitch] No controller connected to send G-code");
+      console.error("[ModeSwitch] Controller not connected. Commands skipped.");
       return;
     }
     commands.forEach(cmd => {
       controller.write(cmd + "\n");
     });
-    console.log("[ModeSwitch] Sent G-code sequence:", commands.join(", "));
+    console.log("[ModeSwitch] Sent G-code:", commands.join(", "));
   }
 
-  // API Routes
+  // API Routes for the Widget
   router.get("/state", (req, res) => {
     const mode = fs.existsSync(STATE_FILE) ? fs.readFileSync(STATE_FILE, "utf8").trim() : "spindle";
     res.send({ mode, machine: machineState, config: loadConfig() });
@@ -119,11 +119,12 @@ module.exports = function (app) {
     res.send({ ok: true });
   });
 
-  // Serve static assets from the plugin's public directory
+  // Serve static UI assets from the plugin's public directory
   const publicPath = path.join(__dirname, 'public');
   router.use(express.static(publicPath));
 
+  // Mount the plugin's router to /mode-switch
   app.use("/mode-switch", router);
 
-  console.log("[ModeSwitch] Static assets served from:", publicPath);
+  console.log("[ModeSwitch] Mounted at /mode-switch. Static assets in:", publicPath);
 };
