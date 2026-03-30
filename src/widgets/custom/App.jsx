@@ -99,7 +99,8 @@ const DEFAULT_SETTINGS = {
         $111: 5000,
         $120: 500,
         $121: 500
-    }
+    },
+    gpioPin: 17
 };
 
 class App extends PureComponent {
@@ -159,7 +160,8 @@ class App extends PureComponent {
         const saved = localStorage.getItem('CNCjs_SpindelLaser_Switch_Settings');
         if (saved) {
             try {
-                return JSON.parse(saved);
+                const settings = JSON.parse(saved);
+                return { ...DEFAULT_SETTINGS, ...settings };
             } catch (e) {
                 return DEFAULT_SETTINGS;
             }
@@ -172,14 +174,23 @@ class App extends PureComponent {
     }
 
     handleSettingChange = (mode, key, value) => {
+        const numValue = Number(value);
         this.setState(prevState => {
-            const newSettings = {
-                ...prevState.settings,
-                [mode]: {
-                    ...prevState.settings[mode],
-                    [key]: value
-                }
-            };
+            let newSettings;
+            if (mode) {
+                newSettings = {
+                    ...prevState.settings,
+                    [mode]: {
+                        ...prevState.settings[mode],
+                        [key]: numValue
+                    }
+                };
+            } else {
+                newSettings = {
+                    ...prevState.settings,
+                    [key]: numValue
+                };
+            }
             this.saveSettings(newSettings);
             return { settings: newSettings };
         });
@@ -188,9 +199,24 @@ class App extends PureComponent {
     sendGrblCommands = (commands) => {
         commands.forEach(cmd => {
             console.log('Sending command to Grbl:', cmd);
-            // use controller.command('gcode') to send $-commands
             controller.command('gcode', cmd);
         });
+    };
+
+    updateGpio = (state) => {
+        const { port, settings } = this.state;
+        const pin = settings.gpioPin;
+        const value = state === 'high' ? 1 : 0;
+
+        if (!port) {
+            console.warn('Cannot update GPIO: No serial port connection');
+            return;
+        }
+
+        console.log(`Setting GPIO pin ${pin} to ${state} (${value}) via port ${port}`);
+
+        // Use the serial port identifier to send the GPIO command
+        controller.socket.emit('command', port, 'raspi:gpio:write', pin, value);
     };
 
     switchToLaser = () => {
@@ -208,6 +234,7 @@ class App extends PureComponent {
         ];
 
         this.sendGrblCommands(commands);
+        this.updateGpio('high');
         this.setState({ currentMode: 'Laser' });
         localStorage.setItem('CNCjs_SpindelLaser_Switch_CurrentMode', 'Laser');
     };
@@ -227,6 +254,7 @@ class App extends PureComponent {
         ];
 
         this.sendGrblCommands(commands);
+        this.updateGpio('low');
         this.setState({ currentMode: 'Spindel' });
         localStorage.setItem('CNCjs_SpindelLaser_Switch_CurrentMode', 'Spindel');
     };
@@ -298,6 +326,10 @@ class App extends PureComponent {
                     </SettingsTitle>
                     {showSettings && (
                         <div>
+                            <div style={{ marginBottom: '10px' }}>
+                                <Label>Raspberry Pi GPIO Pin</Label>
+                                <Input type="number" value={settings.gpioPin} onChange={e => this.handleSettingChange(null, 'gpioPin', e.target.value)} />
+                            </div>
                             <div style={{ fontWeight: 'bold', fontSize: '12px', marginBottom: '5px' }}>Spindel Settings</div>
                             <Grid>
                                 <div>
