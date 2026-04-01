@@ -100,7 +100,9 @@ const DEFAULT_SETTINGS = {
         $120: 500,
         $121: 500
     },
-    gpioPin: 16
+    gpioPin: 16,
+    commandOn: 'laser-on',
+    commandOff: 'laser-off'
 };
 
 class App extends PureComponent {
@@ -174,7 +176,7 @@ class App extends PureComponent {
     }
 
     handleSettingChange = (mode, key, value) => {
-        const numValue = Number(value);
+        const processedValue = (key === 'commandOn' || key === 'commandOff') ? value : Number(value);
         this.setState(prevState => {
             let newSettings;
             if (mode) {
@@ -182,13 +184,13 @@ class App extends PureComponent {
                     ...prevState.settings,
                     [mode]: {
                         ...prevState.settings[mode],
-                        [key]: numValue
+                        [key]: processedValue
                     }
                 };
             } else {
                 newSettings = {
                     ...prevState.settings,
-                    [key]: numValue
+                    [key]: processedValue
                 };
             }
             this.saveSettings(newSettings);
@@ -204,34 +206,13 @@ class App extends PureComponent {
     };
 
     updateGpio = (state) => {
-        const { port, settings } = this.state;
-        const pin = settings.gpioPin;
-        const value = state === 'high' ? 1 : 0;
+        const { settings } = this.state;
+        const commandName = state === 'high' ? settings.commandOn : settings.commandOff;
 
-        console.log(`Setting GPIO pin ${pin} to ${state} (${value})`);
+        console.log(`Triggering CNCjs server command: ${commandName}`);
 
-        // CNCjs doesn't have a standard built-in raspi:gpio:write event in the core.
-        // It's often handled by a background script or a plugin like cncjs-pendant-raspi-gpio.
-        // We'll try common patterns:
-
-        // 1. Emit to all (standard for some plugins)
-        controller.socket.emit('raspi:gpio:write', pin, value);
-
-        // 2. Wrap in an object (used by some implementations)
-        controller.socket.emit('raspi:gpio:write', { pin, value });
-
-        // 3. Emit as a command to the port (if port is open)
-        if (port) {
-            controller.socket.emit('command', port, 'raspi:gpio:write', pin, value);
-            // Some versions use an object for command arguments
-            controller.socket.emit('command', port, 'raspi:gpio:write', { pin, value });
-        }
-
-        // 4. Try triggering a shell command if the user has defined them
-        // This is a common way to handle GPIO on Pi
-        // We'll try to call a command named 'laser-mode-on' / 'laser-mode-off'
-        // But since we want to use the pin from settings, it's better if we can run a generic command
-        // controller.command('run', 'gpio-set', pin, value);
+        // Use the 'run' command which executes a named "Server Command" in CNCjs
+        controller.command('run', commandName);
     };
 
     switchToLaser = () => {
@@ -342,12 +323,19 @@ class App extends PureComponent {
                     {showSettings && (
                         <div>
                             <div style={{ marginBottom: '10px' }}>
-                                <Label>Raspberry Pi GPIO Pin</Label>
+                                <Label>GPIO Pin (für Script)</Label>
                                 <Input type="number" value={settings.gpioPin} onChange={e => this.handleSettingChange(null, 'gpioPin', e.target.value)} />
-                                <div style={{ fontSize: '10px', color: '#888', marginTop: '2px' }}>
-                                    Requires a background script listening for 'raspi:gpio:write' events.
-                                </div>
                             </div>
+                            <Grid>
+                                <div>
+                                    <Label>Server CMD High</Label>
+                                    <Input type="text" value={settings.commandOn} onChange={e => this.handleSettingChange(null, 'commandOn', e.target.value)} />
+                                </div>
+                                <div>
+                                    <Label>Server CMD Low</Label>
+                                    <Input type="text" value={settings.commandOff} onChange={e => this.handleSettingChange(null, 'commandOff', e.target.value)} />
+                                </div>
+                            </Grid>
                             <div style={{ fontWeight: 'bold', fontSize: '12px', marginBottom: '5px' }}>Spindel Settings</div>
                             <Grid>
                                 <div>
