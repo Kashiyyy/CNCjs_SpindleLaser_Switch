@@ -100,7 +100,7 @@ const DEFAULT_SETTINGS = {
         $120: 500,
         $121: 500
     },
-    gpioPin: 17
+    gpioPin: 16
 };
 
 class App extends PureComponent {
@@ -208,15 +208,30 @@ class App extends PureComponent {
         const pin = settings.gpioPin;
         const value = state === 'high' ? 1 : 0;
 
-        if (!port) {
-            console.warn('Cannot update GPIO: No serial port connection');
-            return;
+        console.log(`Setting GPIO pin ${pin} to ${state} (${value})`);
+
+        // CNCjs doesn't have a standard built-in raspi:gpio:write event in the core.
+        // It's often handled by a background script or a plugin like cncjs-pendant-raspi-gpio.
+        // We'll try common patterns:
+
+        // 1. Emit to all (standard for some plugins)
+        controller.socket.emit('raspi:gpio:write', pin, value);
+
+        // 2. Wrap in an object (used by some implementations)
+        controller.socket.emit('raspi:gpio:write', { pin, value });
+
+        // 3. Emit as a command to the port (if port is open)
+        if (port) {
+            controller.socket.emit('command', port, 'raspi:gpio:write', pin, value);
+            // Some versions use an object for command arguments
+            controller.socket.emit('command', port, 'raspi:gpio:write', { pin, value });
         }
 
-        console.log(`Setting GPIO pin ${pin} to ${state} (${value}) via port ${port}`);
-
-        // Use the serial port identifier to send the GPIO command
-        controller.socket.emit('command', port, 'raspi:gpio:write', pin, value);
+        // 4. Try triggering a shell command if the user has defined them
+        // This is a common way to handle GPIO on Pi
+        // We'll try to call a command named 'laser-mode-on' / 'laser-mode-off'
+        // But since we want to use the pin from settings, it's better if we can run a generic command
+        // controller.command('run', 'gpio-set', pin, value);
     };
 
     switchToLaser = () => {
@@ -329,6 +344,9 @@ class App extends PureComponent {
                             <div style={{ marginBottom: '10px' }}>
                                 <Label>Raspberry Pi GPIO Pin</Label>
                                 <Input type="number" value={settings.gpioPin} onChange={e => this.handleSettingChange(null, 'gpioPin', e.target.value)} />
+                                <div style={{ fontSize: '10px', color: '#888', marginTop: '2px' }}>
+                                    Requires a background script listening for 'raspi:gpio:write' events.
+                                </div>
                             </div>
                             <div style={{ fontWeight: 'bold', fontSize: '12px', marginBottom: '5px' }}>Spindel Settings</div>
                             <Grid>
