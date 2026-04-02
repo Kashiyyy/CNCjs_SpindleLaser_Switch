@@ -36,17 +36,27 @@ const server = http.createServer((req, res) => {
     }
 
     // Use execFile to pass arguments safely as an array
-    console.log(`Executing: ${SCRIPT_PATH} ${pinNumber} ${state}`);
+    console.log(`[${new Date().toISOString()}] Executing: ${SCRIPT_PATH} ${pinNumber} ${state}`);
+
     execFile(SCRIPT_PATH, [String(pinNumber), state], (error, stdout, stderr) => {
+        const fullOutput = stdout + stderr;
+        console.log(fullOutput.trim());
+
         if (error) {
             console.error(`Error: ${error.message}`);
             res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: error.message, details: stderr }));
+            res.end(JSON.stringify({
+                error: error.message,
+                details: fullOutput.trim()
+            }));
             return;
         }
-        console.log(`Success: ${stdout.trim()}`);
+
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ message: 'Success', output: stdout.trim() }));
+        res.end(JSON.stringify({
+            message: 'Success',
+            output: fullOutput.trim()
+        }));
     });
 });
 

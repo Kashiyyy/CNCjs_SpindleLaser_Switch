@@ -40,21 +40,22 @@ cncjs --mount /widget:/home/pi/cncjs-widgets/spindel-laser-switch
 
 ## Direkte GPIO Steuerung einrichten (Empfohlen)
 
-Da CNCjs Server-Befehle manchmal unzuverlässig sind, bietet dieses Widget eine "Direkte Steuerung" über eine kleine Bridge an. Diese benötigt keine Installation von Python-Paketen und läuft direkt mit Node.js.
+Das Widget steuert den GPIO Pin über eine kleine Bridge, die direkt mit Node.js läuft.
 
 ### 1. Bridge vorbereiten
 
-Kopiere die Dateien und mache das Script ausführbar:
+Kopiere die Dateien und setze die Berechtigungen:
 
 ```bash
 mkdir -p /home/pi/scripts
 cp scripts/gpio-set.sh scripts/gpio-bridge.cjs /home/pi/scripts/
+
+# WICHTIG: Berechtigungen setzen
 chmod +x /home/pi/scripts/gpio-set.sh
+sudo chown pi:pi /home/pi/scripts/gpio-set.sh /home/pi/scripts/gpio-bridge.cjs
 ```
 
 ### 2. Bridge starten (mit pm2)
-
-Es wird empfohlen, die Bridge mit `pm2` zu verwalten:
 
 ```bash
 pm2 start /home/pi/scripts/gpio-bridge.cjs --name gpio-bridge
@@ -71,15 +72,22 @@ pm2 save
 
 ## Fehlerbehebung (Debugging)
 
-### 1. Log-Datei prüfen
-Das Script schreibt ein Log nach `/home/pi/scripts/gpio.log`. Schau dort hinein:
+### 1. Bridge-Logs prüfen
+Da die Bridge über `pm2` läuft, kannst du die Logs dort einsehen. Hier siehst du jeden Aufruf und eventuelle Fehler:
 ```bash
-tail -f /home/pi/scripts/gpio.log
+pm2 logs gpio-bridge
 ```
 
-### 2. Manueller Test der Bridge
-Du kannst die Bridge direkt im Browser testen, indem du folgende URL aufrufst (ersetze IP falls nötig):
-`http://localhost:8008/?pin=16&state=on`
+### 2. GPIO Berechtigungen
+Der User, unter dem die Bridge läuft, muss Mitglied der Gruppe `gpio` sein:
+```bash
+sudo usermod -a -G gpio $USER
+```
+(Danach einmal aus- und einloggen).
+
+### 3. Manueller Test der Bridge
+Du kannst die Bridge direkt im Browser testen:
+`http://deine-pi-ip:8008/?pin=16&state=on`
 
 ## Lizenz
 
