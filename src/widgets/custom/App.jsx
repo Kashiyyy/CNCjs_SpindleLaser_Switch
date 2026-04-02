@@ -212,9 +212,16 @@ class App extends PureComponent {
         console.log(`Triggering CNCjs server command: ${commandName} for port ${port}`);
 
         if (port) {
-            // Standard controller.command calls emit('command', this.connection.ident, cmd, ...args)
-            // For 'run' command, it should be: controller.command('run', commandName)
-            controller.command('run', commandName);
+            // DIRECT SOCKET EMIT for server command 'run'
+            // CNCjs server command 'run' takes the command name
+            // The command must be sent via the socket directly to be sure it's handled.
+            // Using controller.socket.emit('command', port, 'run', commandName)
+            if (controller.socket) {
+                controller.socket.emit('command', port, 'run', commandName);
+                console.log(`Socket emit 'command' sent: ${port}, run, ${commandName}`);
+            } else {
+                console.error('Controller socket not available');
+            }
         } else {
             console.warn('Cannot trigger server command: No active serial port');
         }
