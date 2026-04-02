@@ -38,18 +38,18 @@ Starte CNCjs mit dem `--mount`-Parameter:
 cncjs --mount /widget:/home/pi/cncjs-widgets/spindel-laser-switch
 ```
 
-## GPIO Steuerung konfigurieren (ohne Python/Pip)
+## GPIO Steuerung konfigurieren
 
-Statt eines komplexen Python-Scripts verwenden wir die eingebauten "Server-Befehle" von CNCjs.
+Wir verwenden die eingebauten "Server-Befehle" von CNCjs, um den GPIO Pin zu steuern.
 
-### 1. Shell-Scripts vorbereiten
+### 1. Shell-Script vorbereiten
 
-Kopiere die Scripts aus dem `scripts`-Ordner und mache sie ausführbar:
+Kopiere das Script aus dem `scripts`-Ordner und mache es ausführbar:
 
 ```bash
 mkdir -p /home/pi/scripts
-cp scripts/gpio-*.sh /home/pi/scripts/
-chmod +x /home/pi/scripts/gpio-*.sh
+cp scripts/gpio-set.sh /home/pi/scripts/
+chmod +x /home/pi/scripts/gpio-set.sh
 ```
 
 ### 2. CNCjs Server-Befehle einrichten
@@ -60,13 +60,13 @@ chmod +x /home/pi/scripts/gpio-*.sh
 
 **Befehl 1 (Laser an):**
 - **Name:** `laser-on`
-- **Command:** `/home/pi/scripts/gpio-high.sh 16`
+- **Command:** `/home/pi/scripts/gpio-set.sh 16 on`
 
 **Befehl 2 (Laser aus):**
 - **Name:** `laser-off`
-- **Command:** `/home/pi/scripts/gpio-low.sh 16`
+- **Command:** `/home/pi/scripts/gpio-set.sh 16 off`
 
-*Hinweis: Die `16` am Ende ist die Pin-Nummer (BCM). Du kannst sie hier oder im Widget anpassen.*
+*Hinweis: Die `16` ist die Pin-Nummer (BCM). Du kannst sie hier oder im Widget anpassen.*
 
 ## In CNCjs konfigurieren (Widget hinzufügen)
 
