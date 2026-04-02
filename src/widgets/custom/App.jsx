@@ -206,13 +206,18 @@ class App extends PureComponent {
     };
 
     updateGpio = (state) => {
-        const { settings } = this.state;
+        const { port, settings } = this.state;
         const commandName = state === 'high' ? settings.commandOn : settings.commandOff;
 
-        console.log(`Triggering CNCjs server command: ${commandName}`);
+        console.log(`Triggering CNCjs server command: ${commandName} for port ${port}`);
 
-        // Use the 'run' command which executes a named "Server Command" in CNCjs
-        controller.command('run', commandName);
+        if (port) {
+            // Standard controller.command calls emit('command', this.connection.ident, cmd, ...args)
+            // For 'run' command, it should be: controller.command('run', commandName)
+            controller.command('run', commandName);
+        } else {
+            console.warn('Cannot trigger server command: No active serial port');
+        }
     };
 
     switchToLaser = () => {
