@@ -5,6 +5,9 @@ import ResizeObserver from './lib/ResizeObserver';
 import controller from './lib/controller';
 import * as customWidget from './widgets/custom';
 
+// Expose controller to window for debugging
+window.controller = controller;
+
 // Query Parameters
 // * token (required): An authentication token to enable secure communication.
 // * host (optional): Specifies the host to connect to. Defaults to an empty string.

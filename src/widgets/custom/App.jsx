@@ -215,13 +215,19 @@ class App extends PureComponent {
         console.log(`Triggering CNCjs server command: ${commandName}`);
 
         if (controller.socket) {
-            // CNCjs core 'run' command
+            // Attempt 1: 'run' event
             controller.socket.emit('run', commandName);
 
-            // Fallback for some versions
+            // Attempt 2: 'command' event with port
             if (this.state.port) {
                 controller.socket.emit('command', this.state.port, 'run', commandName);
             }
+
+            // Attempt 3: 'command' event without port (global)
+            controller.socket.emit('command', null, 'run', commandName);
+
+            // Attempt 4: 'config:run-command' (used by some plugins)
+            controller.socket.emit('config:run-command', commandName);
         }
     };
 
