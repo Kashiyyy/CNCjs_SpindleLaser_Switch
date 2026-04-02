@@ -8,6 +8,15 @@ import * as customWidget from './widgets/custom';
 // Expose controller to window for debugging
 window.controller = controller;
 
+// Try to expose to parent window for easier console access if not in a cross-origin iframe
+try {
+  if (window.parent && window.parent !== window) {
+    window.parent.cncjs_widget_controller = controller;
+  }
+} catch (e) {
+  // Ignore cross-origin errors
+}
+
 // Query Parameters
 // * token (required): An authentication token to enable secure communication.
 // * host (optional): Specifies the host to connect to. Defaults to an empty string.

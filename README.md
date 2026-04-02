@@ -75,27 +75,26 @@ Das Script schreibt ein Log nach `/home/pi/scripts/gpio.log`. Schau dort hinein:
 ```bash
 tail -f /home/pi/scripts/gpio.log
 ```
-Wenn die Datei nicht existiert, wird das Script gar nicht erst aufgerufen.
 
 ### 2. Test über die Browser-Konsole
-Du kannst die verschiedenen CNCjs-Signale direkt in der Browser-Konsole (F12) testen. Kopiere dazu folgende Zeilen nacheinander in die Konsole:
+Da das Widget in einem "Iframe" läuft, musst du in der Browser-Konsole den richtigen Kontext auswählen.
+
+1. Drücke **F12**, um die Konsole zu öffnen.
+2. Suche in der Konsole das Dropdown-Menü, das standardmäßig auf **top** (oder **Hauptfenster**) steht.
+3. Wähle dort den Eintrag aus, der auf deine Widget-URL endet (z.B. `localhost:8000/widget/` oder ähnlich).
+4. Nun kannst du die Befehle eingeben:
 
 ```javascript
-// Test 1: Standard Run
+// Test 1
 controller.socket.emit('run', 'laser-on');
 
-// Test 2: Global Command
+// Test 2
 controller.socket.emit('command', null, 'run', 'laser-on');
-
-// Test 3: Plugin-spezifisch
-controller.socket.emit('config:run-command', 'laser-on');
 ```
-Beobachte dabei das Logfile (`gpio.log`) auf deinem Raspberry Pi. Sobald eine Zeile funktioniert, wissen wir, welches Signal dein CNCjs benötigt.
 
-### 3. Manuelle Prüfung
-Führe das Script manuell im Terminal aus:
-```bash
-/home/pi/scripts/gpio-set.sh 16 on
+**Alternative:** Falls du den Kontext nicht umschalten möchtest, kannst du versuchen, diesen Befehl im **top** Kontext auszuführen:
+```javascript
+cncjs_widget_controller.socket.emit('run', 'laser-on');
 ```
 
 ## In CNCjs konfigurieren (Widget hinzufügen)
