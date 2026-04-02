@@ -91,6 +91,16 @@ const Label = styled.label`
     color: #666;
 `;
 
+const CheckboxLabel = styled.label`
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: #333;
+    margin-bottom: 10px;
+    cursor: pointer;
+`;
+
 const DEFAULT_SETTINGS = {
     spindel: {
         $30: 24000,
@@ -107,6 +117,8 @@ const DEFAULT_SETTINGS = {
         $121: 500
     },
     gpioPin: 16,
+    directControl: true,
+    bridgeUrl: 'http://localhost:8008',
     commandOn: 'laser-on',
     commandOff: 'laser-off'
 };
@@ -182,7 +194,13 @@ class App extends PureComponent {
     }
 
     handleSettingChange = (mode, key, value) => {
-        const processedValue = (key === 'commandOn' || key === 'commandOff') ? value : Number(value);
+        let processedValue = value;
+        if (key === 'directControl') {
+            processedValue = value; // boolean
+        } else if (typeof DEFAULT_SETTINGS[key] === 'number' || (mode && typeof DEFAULT_SETTINGS[mode][key] === 'number')) {
+            processedValue = Number(value);
+        }
+
         this.setState(prevState => {
             let newSettings;
             if (mode) {
@@ -211,23 +229,23 @@ class App extends PureComponent {
         });
     };
 
-    triggerServerCommand = (commandName) => {
-        console.log(`Triggering CNCjs server command: ${commandName}`);
+    updateGpio = (state) => {
+        const { settings } = this.state;
+        const val = state === 'high' ? 'on' : 'off';
 
-        if (controller.socket) {
-            // Attempt 1: 'run' event
-            controller.socket.emit('run', commandName);
-
-            // Attempt 2: 'command' event with port
-            if (this.state.port) {
-                controller.socket.emit('command', this.state.port, 'run', commandName);
+        if (settings.directControl) {
+            const url = `${settings.bridgeUrl}/?pin=${settings.gpioPin}&state=${val}`;
+            console.log(`Direct Control: Fetching ${url}`);
+            fetch(url).catch(err => console.error('Bridge request failed:', err));
+        } else {
+            const commandName = state === 'high' ? settings.commandOn : settings.commandOff;
+            console.log(`CNCjs Command: Triggering ${commandName}`);
+            if (controller.socket) {
+                controller.socket.emit('run', commandName);
+                if (this.state.port) {
+                    controller.socket.emit('command', this.state.port, 'run', commandName);
+                }
             }
-
-            // Attempt 3: 'command' event without port (global)
-            controller.socket.emit('command', null, 'run', commandName);
-
-            // Attempt 4: 'config:run-command' (used by some plugins)
-            controller.socket.emit('config:run-command', commandName);
         }
     };
 
@@ -246,7 +264,7 @@ class App extends PureComponent {
         ];
 
         this.sendGrblCommands(commands);
-        this.triggerServerCommand(settings.commandOn);
+        this.updateGpio('high');
         this.setState({ currentMode: 'Laser' });
         localStorage.setItem('CNCjs_SpindelLaser_Switch_CurrentMode', 'Laser');
     };
@@ -266,7 +284,7 @@ class App extends PureComponent {
         ];
 
         this.sendGrblCommands(commands);
-        this.triggerServerCommand(settings.commandOff);
+        this.updateGpio('low');
         this.setState({ currentMode: 'Spindel' });
         localStorage.setItem('CNCjs_SpindelLaser_Switch_CurrentMode', 'Spindel');
     };
@@ -338,24 +356,42 @@ class App extends PureComponent {
                     </SettingsTitle>
                     {showSettings && (
                         <div>
+                            <CheckboxLabel>
+                                <input
+                                    type="checkbox"
+                                    checked={settings.directControl}
+                                    onChange={e => this.handleSettingChange(null, 'directControl', e.target.checked)}
+                                />
+                                Direkte Steuerung (über GPIO Bridge)
+                            </CheckboxLabel>
+
+                            {settings.directControl ? (
+                                <div style={{ marginBottom: '10px' }}>
+                                    <Label>Bridge URL</Label>
+                                    <Input type="text" value={settings.bridgeUrl} onChange={e => this.handleSettingChange(null, 'bridgeUrl', e.target.value)} />
+                                </div>
+                            ) : (
+                                <Grid>
+                                    <div>
+                                        <Label>CMD High</Label>
+                                        <Input type="text" value={settings.commandOn} onChange={e => this.handleSettingChange(null, 'commandOn', e.target.value)} />
+                                    </div>
+                                    <div>
+                                        <Label>CMD Low</Label>
+                                        <Input type="text" value={settings.commandOff} onChange={e => this.handleSettingChange(null, 'commandOff', e.target.value)} />
+                                    </div>
+                                </Grid>
+                            )}
+
                             <div style={{ marginBottom: '10px' }}>
-                                <Label>GPIO Pin (für Script)</Label>
+                                <Label>GPIO Pin</Label>
                                 <Input type="number" value={settings.gpioPin} onChange={e => this.handleSettingChange(null, 'gpioPin', e.target.value)} />
                                 <div style={{ display: 'flex', gap: '5px' }}>
-                                    <TestButton onClick={() => this.triggerServerCommand(settings.commandOn)}>Test On</TestButton>
-                                    <TestButton onClick={() => this.triggerServerCommand(settings.commandOff)}>Test Off</TestButton>
+                                    <TestButton onClick={() => this.updateGpio('high')}>Test High</TestButton>
+                                    <TestButton onClick={() => this.updateGpio('low')}>Test Low</TestButton>
                                 </div>
                             </div>
-                            <Grid>
-                                <div>
-                                    <Label>Server CMD High</Label>
-                                    <Input type="text" value={settings.commandOn} onChange={e => this.handleSettingChange(null, 'commandOn', e.target.value)} />
-                                </div>
-                                <div>
-                                    <Label>Server CMD Low</Label>
-                                    <Input type="text" value={settings.commandOff} onChange={e => this.handleSettingChange(null, 'commandOff', e.target.value)} />
-                                </div>
-                            </Grid>
+
                             <div style={{ fontWeight: 'bold', fontSize: '12px', marginBottom: '5px' }}>Spindel Settings</div>
                             <Grid>
                                 <div>

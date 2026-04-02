@@ -1,12 +1,12 @@
 # CNCjs_SpindelLaser_Switch
 
-Ein Custom Widget für CNCjs zum Umschalten zwischen Spindel und Laser, inklusive Steuerung eines Raspberry Pi GPIO Pins über CNCjs Server-Befehle.
+Ein Custom Widget für CNCjs zum Umschalten zwischen Spindel und Laser, inklusive direkter Steuerung eines Raspberry Pi GPIO Pins.
 
 ## Funktionsweise
 
 Das Widget erlaubt das Umschalten zwischen Laser- und Spindel-Modus. Dabei werden:
 1. Bestimmte Grbl-Parameter ($32, $30, $110, $111, $120, $121) aktualisiert.
-2. Ein vorkonfigurierter CNCjs **Server-Befehl** ausgeführt, um einen GPIO Pin am Raspberry Pi zu schalten.
+2. Ein GPIO Pin am Raspberry Pi geschaltet (HIGH für Laser, LOW für Spindel).
 
 Das Umschalten ist aus Sicherheitsgründen nur möglich, wenn sich Grbl im **Idle** Zustand befindet.
 
@@ -38,37 +38,38 @@ Starte CNCjs mit dem `--mount`-Parameter:
 cncjs --mount /widget:/home/pi/cncjs-widgets/spindel-laser-switch
 ```
 
-## GPIO Steuerung konfigurieren
+## Direkte GPIO Steuerung einrichten (Empfohlen)
 
-Wir verwenden die eingebauten "Server-Befehle" von CNCjs, um den GPIO Pin zu steuern.
+Da CNCjs Server-Befehle manchmal unzuverlässig sind, bietet dieses Widget eine "Direkte Steuerung" über eine kleine Bridge an. Diese benötigt keine Installation von Python-Paketen und läuft direkt mit Node.js.
 
-### 1. Shell-Script vorbereiten
+### 1. Bridge vorbereiten
 
-Kopiere das Script aus dem `scripts`-Ordner und mache es ausführbar:
+Kopiere die Dateien und mache das Script ausführbar:
 
 ```bash
 mkdir -p /home/pi/scripts
-cp scripts/gpio-set.sh /home/pi/scripts/
+cp scripts/gpio-set.sh scripts/gpio-bridge.cjs /home/pi/scripts/
 chmod +x /home/pi/scripts/gpio-set.sh
 ```
 
-### 2. CNCjs Server-Befehle einrichten
+### 2. Bridge starten (mit pm2)
 
-1. Öffne CNCjs im Browser.
-2. Gehe zu **Settings** (Zahnrad oben rechts) > **Commands**.
-3. Klicke auf **+ Add**, um zwei neue Befehle hinzuzufügen:
+Es wird empfohlen, die Bridge mit `pm2` zu verwalten:
 
-**Befehl 1 (Laser an):**
-- **Name:** `laser-on`
-- **Command:** `/home/pi/scripts/gpio-set.sh 16 on`
+```bash
+pm2 start /home/pi/scripts/gpio-bridge.cjs --name gpio-bridge
+pm2 save
+```
 
-**Befehl 2 (Laser aus):**
-- **Name:** `laser-off`
-- **Command:** `/home/pi/scripts/gpio-set.sh 16 off`
+## In CNCjs konfigurieren
+
+1. Klicke in der Widget-Leiste auf **Manage Widgets**.
+2. Aktiviere das **Custom** Widget.
+3. Klicke auf das Bearbeiten-Icon des Custom Widgets.
+4. Gib die URL `/widget/` ein.
+5. In den **Settings** des Widgets (auf den Titel klicken) ist **Direkte Steuerung** standardmäßig aktiv. Hier kannst du den GPIO Pin und die Grbl-Werte anpassen.
 
 ## Fehlerbehebung (Debugging)
-
-Falls der GPIO Pin nicht schaltet, obwohl die Grbl-Settings übernommen werden:
 
 ### 1. Log-Datei prüfen
 Das Script schreibt ein Log nach `/home/pi/scripts/gpio.log`. Schau dort hinein:
@@ -76,33 +77,9 @@ Das Script schreibt ein Log nach `/home/pi/scripts/gpio.log`. Schau dort hinein:
 tail -f /home/pi/scripts/gpio.log
 ```
 
-### 2. Test über die Browser-Konsole
-Da das Widget in einem "Iframe" läuft, musst du in der Browser-Konsole den richtigen Kontext auswählen.
-
-1. Drücke **F12**, um die Konsole zu öffnen.
-2. Suche in der Konsole das Dropdown-Menü, das standardmäßig auf **top** (oder **Hauptfenster**) steht.
-3. Wähle dort den Eintrag aus, der auf deine Widget-URL endet (z.B. `localhost:8000/widget/` oder ähnlich).
-4. Nun kannst du die Befehle eingeben:
-
-```javascript
-// Test 1
-controller.socket.emit('run', 'laser-on');
-
-// Test 2
-controller.socket.emit('command', null, 'run', 'laser-on');
-```
-
-**Alternative:** Falls du den Kontext nicht umschalten möchtest, kannst du versuchen, diesen Befehl im **top** Kontext auszuführen:
-```javascript
-cncjs_widget_controller.socket.emit('run', 'laser-on');
-```
-
-## In CNCjs konfigurieren (Widget hinzufügen)
-
-1. Klicke in der Widget-Leiste auf **Manage Widgets**.
-2. Aktiviere das **Custom** Widget.
-3. Klicke auf das Bearbeiten-Icon des Custom Widgets.
-4. Gib die URL `/widget/` ein.
+### 2. Manueller Test der Bridge
+Du kannst die Bridge direkt im Browser testen, indem du folgende URL aufrufst (ersetze IP falls nötig):
+`http://localhost:8008/?pin=16&state=on`
 
 ## Lizenz
 
