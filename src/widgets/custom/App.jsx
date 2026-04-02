@@ -206,24 +206,23 @@ class App extends PureComponent {
     };
 
     updateGpio = (state) => {
-        const { port, settings } = this.state;
+        const { settings } = this.state;
         const commandName = state === 'high' ? settings.commandOn : settings.commandOff;
 
-        console.log(`Triggering CNCjs server command: ${commandName} for port ${port}`);
+        console.log(`Triggering CNCjs server command: ${commandName}`);
 
-        if (port) {
-            // DIRECT SOCKET EMIT for server command 'run'
-            // CNCjs server command 'run' takes the command name
-            // The command must be sent via the socket directly to be sure it's handled.
-            // Using controller.socket.emit('command', port, 'run', commandName)
-            if (controller.socket) {
-                controller.socket.emit('command', port, 'run', commandName);
-                console.log(`Socket emit 'command' sent: ${port}, run, ${commandName}`);
-            } else {
-                console.error('Controller socket not available');
+        if (controller.socket) {
+            // Attempt 1: Standard 'run' event for server commands
+            controller.socket.emit('run', commandName);
+            console.log(`Socket emit 'run' sent: ${commandName}`);
+
+            // Attempt 2: Port-specific command run (backward compatibility)
+            if (this.state.port) {
+                controller.socket.emit('command', this.state.port, 'run', commandName);
+                console.log(`Socket emit 'command' sent: ${this.state.port}, run, ${commandName}`);
             }
         } else {
-            console.warn('Cannot trigger server command: No active serial port');
+            console.error('Controller socket not available');
         }
     };
 
