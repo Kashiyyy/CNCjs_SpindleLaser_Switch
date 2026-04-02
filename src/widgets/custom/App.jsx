@@ -36,6 +36,12 @@ const Button = styled.button`
     }
 `;
 
+const TestButton = styled(Button)`
+    padding: 5px;
+    font-size: 12px;
+    margin-top: 5px;
+`;
+
 const StatusText = styled.div`
     margin-bottom: 10px;
     font-size: 14px;
@@ -205,24 +211,17 @@ class App extends PureComponent {
         });
     };
 
-    updateGpio = (state) => {
-        const { settings } = this.state;
-        const commandName = state === 'high' ? settings.commandOn : settings.commandOff;
-
+    triggerServerCommand = (commandName) => {
         console.log(`Triggering CNCjs server command: ${commandName}`);
 
         if (controller.socket) {
-            // Attempt 1: Standard 'run' event for server commands
+            // CNCjs core 'run' command
             controller.socket.emit('run', commandName);
-            console.log(`Socket emit 'run' sent: ${commandName}`);
 
-            // Attempt 2: Port-specific command run (backward compatibility)
+            // Fallback for some versions
             if (this.state.port) {
                 controller.socket.emit('command', this.state.port, 'run', commandName);
-                console.log(`Socket emit 'command' sent: ${this.state.port}, run, ${commandName}`);
             }
-        } else {
-            console.error('Controller socket not available');
         }
     };
 
@@ -241,7 +240,7 @@ class App extends PureComponent {
         ];
 
         this.sendGrblCommands(commands);
-        this.updateGpio('high');
+        this.triggerServerCommand(settings.commandOn);
         this.setState({ currentMode: 'Laser' });
         localStorage.setItem('CNCjs_SpindelLaser_Switch_CurrentMode', 'Laser');
     };
@@ -261,7 +260,7 @@ class App extends PureComponent {
         ];
 
         this.sendGrblCommands(commands);
-        this.updateGpio('low');
+        this.triggerServerCommand(settings.commandOff);
         this.setState({ currentMode: 'Spindel' });
         localStorage.setItem('CNCjs_SpindelLaser_Switch_CurrentMode', 'Spindel');
     };
@@ -336,6 +335,10 @@ class App extends PureComponent {
                             <div style={{ marginBottom: '10px' }}>
                                 <Label>GPIO Pin (für Script)</Label>
                                 <Input type="number" value={settings.gpioPin} onChange={e => this.handleSettingChange(null, 'gpioPin', e.target.value)} />
+                                <div style={{ display: 'flex', gap: '5px' }}>
+                                    <TestButton onClick={() => this.triggerServerCommand(settings.commandOn)}>Test On</TestButton>
+                                    <TestButton onClick={() => this.triggerServerCommand(settings.commandOff)}>Test Off</TestButton>
+                                </div>
                             </div>
                             <Grid>
                                 <div>

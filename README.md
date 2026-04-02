@@ -66,7 +66,27 @@ chmod +x /home/pi/scripts/gpio-set.sh
 - **Name:** `laser-off`
 - **Command:** `/home/pi/scripts/gpio-set.sh 16 off`
 
-*Hinweis: Die `16` ist die Pin-Nummer (BCM). Du kannst sie hier oder im Widget anpassen.*
+## Fehlerbehebung (Debugging)
+
+Falls der GPIO Pin nicht schaltet, kannst du folgende Schritte zur Fehlersuche unternehmen:
+
+1. **Log-Datei prüfen:** Das Script schreibt ein Log nach `/home/pi/scripts/gpio.log`. Schau dort hinein, um zu sehen, ob das Script überhaupt aufgerufen wird und ob Fehler auftreten:
+   ```bash
+   tail -f /home/pi/scripts/gpio.log
+   ```
+
+2. **Manuelle Prüfung:** Führe das Script manuell im Terminal aus, um sicherzustellen, dass es funktioniert:
+   ```bash
+   /home/pi/scripts/gpio-set.sh 16 on
+   ```
+
+3. **Berechtigungen:** CNCjs läuft normalerweise als der User, der es gestartet hat (z.B. `pi` oder `cnc`). Dieser User muss Zugriff auf die GPIOs haben. Auf modernen Pi-Systemen ist das meist über die Gruppe `gpio` geregelt:
+   ```bash
+   sudo usermod -a -G gpio $USER
+   ```
+   (Danach neu einloggen oder den Pi neustarten).
+
+4. **Widget Test-Buttons:** In den Settings des Widgets gibt es Buttons "Test On" und "Test Off". Diese lösen den Befehl aus, ohne die Grbl-Settings zu ändern. Beobachte dabei das Log-File.
 
 ## In CNCjs konfigurieren (Widget hinzufügen)
 
@@ -74,7 +94,6 @@ chmod +x /home/pi/scripts/gpio-set.sh
 2. Aktiviere das **Custom** Widget.
 3. Klicke auf das Bearbeiten-Icon des Custom Widgets.
 4. Gib die URL `/widget/` ein.
-5. In den **Settings** des Widgets (auf den Titel klicken) kannst du die Namen der Server-Befehle (`laser-on` / `laser-off`) und die Grbl-Werte anpassen.
 
 ## Lizenz
 
