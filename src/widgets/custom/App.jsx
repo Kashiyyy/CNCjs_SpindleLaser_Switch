@@ -133,29 +133,29 @@ const IconButton = styled.button`
 `;
 
 const WIDGETS = [
-    { id: 'axes', name: 'Axes' },
+    { id: 'visualizer', name: 'Visualizer' },
     { id: 'connection', name: 'Connection' },
     { id: 'console', name: 'Console' },
-    { id: 'gcode', name: 'G-code' },
     { id: 'grbl', name: 'Grbl' },
-    { id: 'marlin', name: 'Marlin' },
-    { id: 'smoothie', name: 'Smoothie' },
-    { id: 'tinyg', name: 'TinyG' },
+    { id: 'autolevel', name: 'Autolevel' },
+    { id: 'axes', name: 'Axes' },
+    { id: 'custom', name: 'Custom' },
+    { id: 'gcode', name: 'G-code' },
     { id: 'laser', name: 'Laser' },
     { id: 'macro', name: 'Macro' },
+    { id: 'marlin', name: 'Marlin' },
     { id: 'probe', name: 'Probe' },
+    { id: 'smoothie', name: 'Smoothie' },
     { id: 'spindle', name: 'Spindle' },
-    { id: 'autolevel', name: 'Autolevel' },
+    { id: 'tinyg', name: 'TinyG' },
     { id: 'tool', name: 'Tool' },
-    { id: 'visualizer', name: 'Visualizer' },
-    { id: 'webcam', name: 'Webcam' },
-    { id: 'custom', name: 'Custom' }
+    { id: 'webcam', name: 'Webcam' }
 ];
 
 const getLayout = () => WIDGETS.map((w, index) => ({
     id: w.id,
     visible: true,
-    side: index < 8 ? 'left' : 'right'
+    side: index < 7 ? 'left' : 'right'
 }));
 
 const getDefaultSettings = () => ({
@@ -249,18 +249,18 @@ class App extends PureComponent {
         if (saved) {
             try {
                 const settings = JSON.parse(saved);
-                // Ensure layout exists and has all widgets
                 const merged = { ...defaultSettings, ...settings };
                 ['spindel', 'laser'].forEach(mode => {
+                    // Create a clean layout from current WIDGETS
+                    const defaultLayout = getLayout();
                     if (settings[mode] && settings[mode].layout) {
-                        // Merge saved layout with default layout to add missing widgets
-                        // ALSO filter out widgets that are no longer in WIDGETS (ensure exactly 17)
-                        const savedLayout = settings[mode].layout.filter(sw => WIDGETS.find(w => w.id === sw.id));
-                        const defaultLayout = getLayout();
-                        const missingWidgets = defaultLayout.filter(dw => !savedLayout.find(sw => sw.id === dw.id));
-                        merged[mode].layout = [...savedLayout, ...missingWidgets];
+                        // Use saved settings for widgets that still exist
+                        merged[mode].layout = defaultLayout.map(dw => {
+                            const sw = settings[mode].layout.find(item => item.id === dw.id);
+                            return sw ? { ...dw, ...sw } : dw;
+                        });
                     } else {
-                        merged[mode].layout = getLayout();
+                        merged[mode].layout = defaultLayout;
                     }
                 });
                 return merged;
@@ -367,35 +367,72 @@ class App extends PureComponent {
         const { token } = this.props;
         const layout = settings[mode.toLowerCase()].layout;
 
-        if (!layout || !token) {
-            console.log('Skipping applyLayout: missing layout or token');
+        if (!layout) {
+            console.log('Skipping applyLayout: missing layout');
             return;
         }
 
         console.log(`[Debug] Applying layout for ${mode}:`, layout);
         this.setState({ applyingLayout: true });
 
-        // We'll send multiple postMessage formats to maximize compatibility,
-        // since the REST API /api/config returned 404 and previous postMessage failed.
+        // We use the controller's socket to get and set the configuration
+        // because the REST API and postMessage failed in the user's environment.
+        if (controller.socket) {
+            console.log('[Debug] Socket connection found, requesting config');
+
+            // Note: CNCjs socket events for config are usually 'config:get' and 'config:set'
+            controller.socket.emit('config:get', (config) => {
+                console.log('[Debug] Received config via socket:', config);
+
+                try {
+                    // Update workspace layout
+                    const primary = []; // Left side
+                    const secondary = []; // Right side
+                    const defaultContainer = get(config, 'state.workspace.container.default.widgets', []);
+
+                    layout.forEach(item => {
+                        if (!item.visible) return;
+                        if (item.side === 'left') {
+                            primary.push(item.id);
+                        } else {
+                            secondary.push(item.id);
+                        }
+                    });
+
+                    // Ensure widgets are only in ONE container. Remove from 'default' if present in others
+                    const allAssigned = [...primary, ...secondary];
+                    const filteredDefault = defaultContainer.filter(id => !allAssigned.includes(id));
+
+                    // Safety: Ensure 'custom' widget (this widget) is always present
+                    if (!primary.includes('custom') && !secondary.includes('custom')) {
+                        secondary.push('custom');
+                    }
+
+                    console.log('[Debug] New Primary (Left):', primary);
+                    console.log('[Debug] New Secondary (Right):', secondary);
+
+                    if (config.state && config.state.workspace && config.state.workspace.container) {
+                        config.state.workspace.container.primary.widgets = primary;
+                        config.state.workspace.container.secondary.widgets = secondary;
+                        config.state.workspace.container.default.widgets = filteredDefault;
+
+                        console.log('[Debug] Emitting config:set via socket');
+                        controller.socket.emit('config:set', config);
+                        console.log('[Debug] Config sent successfully');
+                    } else {
+                        console.error('[Debug] Invalid config structure received via socket');
+                    }
+                } catch (err) {
+                    console.error('[Debug] Error processing socket config:', err);
+                }
+            });
+        } else {
+            console.warn('[Debug] No socket connection available for persistent layout update');
+        }
+
+        // We still send postMessage as a backup for immediate (but potentially non-persistent) UI changes
         layout.forEach((item, index) => {
             setTimeout(() => {
-                // Try format 1: Flat type action
-                window.parent.postMessage({
-                    token: token,
-                    action: item.visible ? 'widget:show' : 'widget:hide',
-                    payload: { id: item.id, widget: item.id }
-                }, '*');
-
-                // Try format 2: Nested action with type and payload (standard for some CNCjs versions)
-                window.parent.postMessage({
-                    token: token,
-                    action: {
-                        type: item.visible ? 'widget:show' : 'widget:hide',
-                        payload: { id: item.id, widget: item.id }
-                    }
-                }, '*');
-
-                // Try format 3: widget:visibility action
                 window.parent.postMessage({
                     token: token,
                     action: {
@@ -403,20 +440,12 @@ class App extends PureComponent {
                         payload: { id: item.id, widget: item.id, visible: item.visible }
                     }
                 }, '*');
-
-                // Try format 4: Flat visibility action
-                window.parent.postMessage({
-                    token: token,
-                    action: 'widget:visibility',
-                    payload: { id: item.id, widget: item.id, visible: item.visible }
-                }, '*');
-
-            }, index * 100); // 100ms delay between widgets
+            }, index * 20);
         });
 
         setTimeout(() => {
             this.setState({ applyingLayout: false });
-        }, layout.length * 100 + 500);
+        }, 1000);
     };
 
     switchToLaser = () => {
