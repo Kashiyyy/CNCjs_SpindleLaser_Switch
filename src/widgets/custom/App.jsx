@@ -1,4 +1,5 @@
-import React, { PureComponent } from 'react';
+import { PureComponent } from 'react';
+import PropTypes from 'prop-types';
 import styled from 'styled-components';
 import get from 'lodash.get';
 import controller from '../../lib/controller';
@@ -91,26 +92,91 @@ const Label = styled.label`
     color: #666;
 `;
 
+const TabContainer = styled.div`
+    display: flex;
+    border-bottom: 1px solid #ccc;
+    margin-bottom: 10px;
+`;
+
+const Tab = styled.div`
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    border: 1px solid transparent;
+    border-bottom: none;
+    margin-bottom: -1px;
+    background: ${props => props.$active ? '#fff' : 'transparent'};
+    border-color: ${props => props.$active ? '#ccc #ccc transparent #ccc' : 'transparent'};
+    font-weight: ${props => props.$active ? 'bold' : 'normal'};
+`;
+
+const LayoutItem = styled.div`
+    display: flex;
+    align-items: center;
+    padding: 5px;
+    border: 1px solid #eee;
+    margin-bottom: 5px;
+    font-size: 11px;
+    gap: 5px;
+`;
+
+const LayoutControls = styled.div`
+    display: flex;
+    gap: 2px;
+    margin-left: auto;
+`;
+
+const IconButton = styled.button`
+    padding: 2px 4px;
+    font-size: 10px;
+    cursor: pointer;
+`;
+
+const WIDGETS = [
+    { id: 'axes', name: 'Axes' },
+    { id: 'connection', name: 'Connection' },
+    { id: 'console', name: 'Console' },
+    { id: 'gcode', name: 'G-code' },
+    { id: 'laser', name: 'Laser' },
+    { id: 'macro', name: 'Macro' },
+    { id: 'probe', name: 'Probe' },
+    { id: 'spindle', name: 'Spindle' },
+    { id: 'visualizer', name: 'Visualizer' },
+    { id: 'webcam', name: 'Webcam' }
+];
+
+const DEFAULT_LAYOUT = WIDGETS.map((w, index) => ({
+    id: w.id,
+    visible: true,
+    side: index < 5 ? 'left' : 'right'
+}));
+
 const DEFAULT_SETTINGS = {
     spindel: {
         $30: 24000,
         $110: 2000,
         $111: 2000,
         $120: 100,
-        $121: 100
+        $121: 100,
+        layout: [...DEFAULT_LAYOUT]
     },
     laser: {
         $30: 1000,
         $110: 5000,
         $111: 5000,
         $120: 500,
-        $121: 500
+        $121: 500,
+        layout: [...DEFAULT_LAYOUT]
     },
     gpioPin: 16,
     bridgeUrl: `http://${window.location.hostname}:8008`
 };
 
 class App extends PureComponent {
+    static propTypes = {
+        token: PropTypes.string
+    };
+
     state = {
         port: controller.port,
         controller: {
@@ -119,7 +185,8 @@ class App extends PureComponent {
         },
         currentMode: localStorage.getItem('CNCjs_SpindelLaser_Switch_CurrentMode') || 'Spindel',
         showSettings: false,
-        settings: this.loadSettings()
+        settings: this.loadSettings(),
+        activeTab: 'general'
     };
 
     controllerEvent = {
@@ -143,6 +210,10 @@ class App extends PureComponent {
 
     componentDidMount() {
         this.addControllerEvents();
+        // Delay to allow CNCjs to initialize
+        setTimeout(() => {
+            this.applyLayout(this.state.currentMode);
+        }, 1000);
     }
 
     componentWillUnmount() {
@@ -169,7 +240,8 @@ class App extends PureComponent {
             try {
                 const settings = JSON.parse(saved);
                 return { ...DEFAULT_SETTINGS, ...settings };
-            } catch (e) {
+            } catch (err) {
+                console.error(err);
                 return DEFAULT_SETTINGS;
             }
         }
@@ -207,6 +279,45 @@ class App extends PureComponent {
         });
     };
 
+    handleLayoutChange = (mode, layout) => {
+        this.setState(prevState => {
+            const newSettings = {
+                ...prevState.settings,
+                [mode]: {
+                    ...prevState.settings[mode],
+                    layout: layout
+                }
+            };
+            this.saveSettings(newSettings);
+            return { settings: newSettings };
+        });
+    };
+
+    moveLayoutItem = (mode, index, direction) => {
+        const { settings } = this.state;
+        const layout = [...settings[mode].layout];
+        const newIndex = index + direction;
+        if (newIndex < 0 || newIndex >= layout.length) return;
+
+        const item = layout.splice(index, 1)[0];
+        layout.splice(newIndex, 0, item);
+        this.handleLayoutChange(mode, layout);
+    };
+
+    toggleLayoutVisibility = (mode, index) => {
+        const { settings } = this.state;
+        const layout = [...settings[mode].layout];
+        layout[index] = { ...layout[index], visible: !layout[index].visible };
+        this.handleLayoutChange(mode, layout);
+    };
+
+    toggleLayoutSide = (mode, index) => {
+        const { settings } = this.state;
+        const layout = [...settings[mode].layout];
+        layout[index] = { ...layout[index], side: layout[index].side === 'left' ? 'right' : 'left' };
+        this.handleLayoutChange(mode, layout);
+    };
+
     sendGrblCommands = (commands) => {
         commands.forEach(cmd => {
             console.log('Sending command to Grbl:', cmd);
@@ -222,6 +333,43 @@ class App extends PureComponent {
 
         console.log(`GPIO Bridge: Fetching ${url}`);
         fetch(url).catch(err => console.error('Bridge request failed:', err));
+    };
+
+    applyLayout = (mode) => {
+        const { settings } = this.state;
+        const { token } = this.props;
+        const layout = settings[mode.toLowerCase()].layout;
+
+        if (!layout) return;
+
+        console.log(`Applying layout for ${mode}`);
+
+        // 1. Set visibility for each widget
+        layout.forEach(item => {
+            window.parent.postMessage({
+                token: token,
+                action: {
+                    type: 'widget:visibility',
+                    payload: {
+                        widget: item.id,
+                        visible: item.visible
+                    }
+                }
+            }, '*');
+        });
+
+        // 2. Set the overall layout/order
+        // Note: CNCjs might need a specific action to rearrange widgets.
+        // We'll send a custom action that the parent (or a user script) could potentially handle.
+        window.parent.postMessage({
+            token: token,
+            action: {
+                type: 'widget:layout',
+                payload: {
+                    layout: layout
+                }
+            }
+        }, '*');
     };
 
     switchToLaser = () => {
@@ -240,6 +388,7 @@ class App extends PureComponent {
 
         this.sendGrblCommands(commands);
         this.updateGpio('high');
+        this.applyLayout('Laser');
         this.setState({ currentMode: 'Laser' });
         localStorage.setItem('CNCjs_SpindelLaser_Switch_CurrentMode', 'Laser');
     };
@@ -260,6 +409,7 @@ class App extends PureComponent {
 
         this.sendGrblCommands(commands);
         this.updateGpio('low');
+        this.applyLayout('Spindel');
         this.setState({ currentMode: 'Spindel' });
         localStorage.setItem('CNCjs_SpindelLaser_Switch_CurrentMode', 'Spindel');
     };
@@ -272,8 +422,43 @@ class App extends PureComponent {
         return activeState === GRBL_ACTIVE_STATE_IDLE;
     };
 
+    renderLayoutTab(mode) {
+        const { settings } = this.state;
+        const layout = settings[mode].layout || DEFAULT_LAYOUT;
+
+        return (
+            <div>
+                <div style={{ marginBottom: '10px', fontSize: '11px', color: '#666' }}>
+                    Configure {mode} Layout
+                </div>
+                {layout.map((item, index) => {
+                    const widgetInfo = WIDGETS.find(w => w.id === item.id) || { name: item.id };
+                    return (
+                        <LayoutItem key={item.id}>
+                            <div style={{ width: '80px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{widgetInfo.name}</div>
+                            <LayoutControls>
+                                <IconButton onClick={() => this.toggleLayoutVisibility(mode, index)}>
+                                    {item.visible ? '👁️' : '🚫'}
+                                </IconButton>
+                                <IconButton onClick={() => this.toggleLayoutSide(mode, index)}>
+                                    {item.side === 'left' ? 'L' : 'R'}
+                                </IconButton>
+                                <IconButton disabled={index === 0} onClick={() => this.moveLayoutItem(mode, index, -1)}>
+                                    ↑
+                                </IconButton>
+                                <IconButton disabled={index === layout.length - 1} onClick={() => this.moveLayoutItem(mode, index, 1)}>
+                                    ↓
+                                </IconButton>
+                            </LayoutControls>
+                        </LayoutItem>
+                    );
+                })}
+            </div>
+        );
+    }
+
     render() {
-        const { port, controller: { type, state }, currentMode, showSettings, settings } = this.state;
+        const { port, controller: { type, state }, currentMode, showSettings, settings, activeTab } = this.state;
         const activeState = get(state, 'status.activeState');
         const isIdle = activeState === GRBL_ACTIVE_STATE_IDLE;
         const isGrbl = type === GRBL;
@@ -331,66 +516,87 @@ class App extends PureComponent {
                     </SettingsTitle>
                     {showSettings && (
                         <div>
-                            <div style={{ marginBottom: '10px' }}>
-                                <Label>Bridge URL</Label>
-                                <Input type="text" value={settings.bridgeUrl} onChange={e => this.handleSettingChange(null, 'bridgeUrl', e.target.value)} />
-                            </div>
+                            <TabContainer>
+                                <Tab $active={activeTab === 'general'} onClick={() => this.setState({ activeTab: 'general' })}>General</Tab>
+                                <Tab $active={activeTab === 'spindel'} onClick={() => this.setState({ activeTab: 'spindel' })}>Spindel</Tab>
+                                <Tab $active={activeTab === 'laser'} onClick={() => this.setState({ activeTab: 'laser' })}>Laser</Tab>
+                            </TabContainer>
 
-                            <div style={{ marginBottom: '10px' }}>
-                                <Label>GPIO Pin</Label>
-                                <Input type="number" value={settings.gpioPin} onChange={e => this.handleSettingChange(null, 'gpioPin', e.target.value)} />
-                                <div style={{ display: 'flex', gap: '5px' }}>
-                                    <TestButton onClick={() => this.updateGpio('high')}>Test High</TestButton>
-                                    <TestButton onClick={() => this.updateGpio('low')}>Test Low</TestButton>
-                                </div>
-                            </div>
+                            {activeTab === 'general' && (
+                                <div>
+                                    <div style={{ marginBottom: '10px' }}>
+                                        <Label>Bridge URL</Label>
+                                        <Input type="text" value={settings.bridgeUrl} onChange={e => this.handleSettingChange(null, 'bridgeUrl', e.target.value)} />
+                                    </div>
 
-                            <div style={{ fontWeight: 'bold', fontSize: '12px', marginBottom: '5px' }}>Spindel Settings</div>
-                            <Grid>
-                                <div>
-                                    <Label>$30 (Max S)</Label>
-                                    <Input type="number" value={settings.spindel.$30} onChange={e => this.handleSettingChange('spindel', '$30', e.target.value)} />
+                                    <div style={{ marginBottom: '10px' }}>
+                                        <Label>GPIO Pin</Label>
+                                        <Input type="number" value={settings.gpioPin} onChange={e => this.handleSettingChange(null, 'gpioPin', e.target.value)} />
+                                        <div style={{ display: 'flex', gap: '5px' }}>
+                                            <TestButton onClick={() => this.updateGpio('high')}>Test High</TestButton>
+                                            <TestButton onClick={() => this.updateGpio('low')}>Test Low</TestButton>
+                                        </div>
+                                    </div>
                                 </div>
+                            )}
+
+                            {activeTab === 'spindel' && (
                                 <div>
-                                    <Label>$110 (X Rate)</Label>
-                                    <Input type="number" value={settings.spindel.$110} onChange={e => this.handleSettingChange('spindel', '$110', e.target.value)} />
+                                    <div style={{ fontWeight: 'bold', fontSize: '12px', marginBottom: '5px' }}>Spindel Settings</div>
+                                    <Grid>
+                                        <div>
+                                            <Label>$30 (Max S)</Label>
+                                            <Input type="number" value={settings.spindel.$30} onChange={e => this.handleSettingChange('spindel', '$30', e.target.value)} />
+                                        </div>
+                                        <div>
+                                            <Label>$110 (X Rate)</Label>
+                                            <Input type="number" value={settings.spindel.$110} onChange={e => this.handleSettingChange('spindel', '$110', e.target.value)} />
+                                        </div>
+                                        <div>
+                                            <Label>$111 (Y Rate)</Label>
+                                            <Input type="number" value={settings.spindel.$111} onChange={e => this.handleSettingChange('spindel', '$111', e.target.value)} />
+                                        </div>
+                                        <div>
+                                            <Label>$120 (X Accel)</Label>
+                                            <Input type="number" value={settings.spindel.$120} onChange={e => this.handleSettingChange('spindel', '$120', e.target.value)} />
+                                        </div>
+                                        <div>
+                                            <Label>$121 (Y Accel)</Label>
+                                            <Input type="number" value={settings.spindel.$121} onChange={e => this.handleSettingChange('spindel', '$121', e.target.value)} />
+                                        </div>
+                                    </Grid>
+                                    {this.renderLayoutTab('spindel')}
                                 </div>
+                            )}
+
+                            {activeTab === 'laser' && (
                                 <div>
-                                    <Label>$111 (Y Rate)</Label>
-                                    <Input type="number" value={settings.spindel.$111} onChange={e => this.handleSettingChange('spindel', '$111', e.target.value)} />
+                                    <div style={{ fontWeight: 'bold', fontSize: '12px', marginBottom: '5px' }}>Laser Settings</div>
+                                    <Grid>
+                                        <div>
+                                            <Label>$30 (Max S)</Label>
+                                            <Input type="number" value={settings.laser.$30} onChange={e => this.handleSettingChange('laser', '$30', e.target.value)} />
+                                        </div>
+                                        <div>
+                                            <Label>$110 (X Rate)</Label>
+                                            <Input type="number" value={settings.laser.$110} onChange={e => this.handleSettingChange('laser', '$110', e.target.value)} />
+                                        </div>
+                                        <div>
+                                            <Label>$111 (Y Rate)</Label>
+                                            <Input type="number" value={settings.laser.$111} onChange={e => this.handleSettingChange('laser', '$111', e.target.value)} />
+                                        </div>
+                                        <div>
+                                            <Label>$120 (X Accel)</Label>
+                                            <Input type="number" value={settings.laser.$120} onChange={e => this.handleSettingChange('laser', '$120', e.target.value)} />
+                                        </div>
+                                        <div>
+                                            <Label>$121 (Y Accel)</Label>
+                                            <Input type="number" value={settings.laser.$121} onChange={e => this.handleSettingChange('laser', '$121', e.target.value)} />
+                                        </div>
+                                    </Grid>
+                                    {this.renderLayoutTab('laser')}
                                 </div>
-                                <div>
-                                    <Label>$120 (X Accel)</Label>
-                                    <Input type="number" value={settings.spindel.$120} onChange={e => this.handleSettingChange('spindel', '$120', e.target.value)} />
-                                </div>
-                                <div>
-                                    <Label>$121 (Y Accel)</Label>
-                                    <Input type="number" value={settings.spindel.$121} onChange={e => this.handleSettingChange('spindel', '$121', e.target.value)} />
-                                </div>
-                            </Grid>
-                            <div style={{ fontWeight: 'bold', fontSize: '12px', marginBottom: '5px', marginTop: '10px' }}>Laser Settings</div>
-                            <Grid>
-                                <div>
-                                    <Label>$30 (Max S)</Label>
-                                    <Input type="number" value={settings.laser.$30} onChange={e => this.handleSettingChange('laser', '$30', e.target.value)} />
-                                </div>
-                                <div>
-                                    <Label>$110 (X Rate)</Label>
-                                    <Input type="number" value={settings.laser.$110} onChange={e => this.handleSettingChange('laser', '$110', e.target.value)} />
-                                </div>
-                                <div>
-                                    <Label>$111 (Y Rate)</Label>
-                                    <Input type="number" value={settings.laser.$111} onChange={e => this.handleSettingChange('laser', '$111', e.target.value)} />
-                                </div>
-                                <div>
-                                    <Label>$120 (X Accel)</Label>
-                                    <Input type="number" value={settings.laser.$120} onChange={e => this.handleSettingChange('laser', '$120', e.target.value)} />
-                                </div>
-                                <div>
-                                    <Label>$121 (Y Accel)</Label>
-                                    <Input type="number" value={settings.laser.$121} onChange={e => this.handleSettingChange('laser', '$121', e.target.value)} />
-                                </div>
-                            </Grid>
+                            )}
                         </div>
                     )}
                 </SettingsSection>

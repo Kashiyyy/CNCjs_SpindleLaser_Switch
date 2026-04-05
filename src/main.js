@@ -13,8 +13,9 @@ try {
   if (window.parent && window.parent !== window) {
     window.parent.cncjs_widget_controller = controller;
   }
-} catch (e) {
+} catch (err) {
   // Ignore cross-origin errors
+  console.log(err);
 }
 
 // Query Parameters
@@ -50,7 +51,7 @@ window.addEventListener('message', (event) => {
 });
 
 try {
-  customWidget.render();
+  customWidget.render({ token: params.token });
 
   // Connect to a socket.io server
   const host = params.host || ''; // e.g. http://localhost:8000
