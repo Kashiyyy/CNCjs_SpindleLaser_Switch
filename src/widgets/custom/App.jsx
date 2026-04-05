@@ -91,16 +91,6 @@ const Label = styled.label`
     color: #666;
 `;
 
-const CheckboxLabel = styled.label`
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 12px;
-    color: #333;
-    margin-bottom: 10px;
-    cursor: pointer;
-`;
-
 const DEFAULT_SETTINGS = {
     spindel: {
         $30: 24000,
@@ -117,10 +107,7 @@ const DEFAULT_SETTINGS = {
         $121: 500
     },
     gpioPin: 16,
-    directControl: true,
-    bridgeUrl: 'http://localhost:8008',
-    commandOn: 'laser-on',
-    commandOff: 'laser-off'
+    bridgeUrl: `http://${window.location.hostname}:8008`
 };
 
 class App extends PureComponent {
@@ -195,9 +182,7 @@ class App extends PureComponent {
 
     handleSettingChange = (mode, key, value) => {
         let processedValue = value;
-        if (key === 'directControl') {
-            processedValue = value; // boolean
-        } else if (typeof DEFAULT_SETTINGS[key] === 'number' || (mode && typeof DEFAULT_SETTINGS[mode][key] === 'number')) {
+        if (typeof DEFAULT_SETTINGS[key] === 'number' || (mode && typeof DEFAULT_SETTINGS[mode][key] === 'number')) {
             processedValue = Number(value);
         }
 
@@ -225,6 +210,7 @@ class App extends PureComponent {
     sendGrblCommands = (commands) => {
         commands.forEach(cmd => {
             console.log('Sending command to Grbl:', cmd);
+            // controller.command automatically prepends the active connection identifier (port)
             controller.command('gcode', cmd);
         });
     };
@@ -232,21 +218,10 @@ class App extends PureComponent {
     updateGpio = (state) => {
         const { settings } = this.state;
         const val = state === 'high' ? 'on' : 'off';
+        const url = `${settings.bridgeUrl}/?pin=${settings.gpioPin}&state=${val}`;
 
-        if (settings.directControl) {
-            const url = `${settings.bridgeUrl}/?pin=${settings.gpioPin}&state=${val}`;
-            console.log(`Direct Control: Fetching ${url}`);
-            fetch(url).catch(err => console.error('Bridge request failed:', err));
-        } else {
-            const commandName = state === 'high' ? settings.commandOn : settings.commandOff;
-            console.log(`CNCjs Command: Triggering ${commandName}`);
-            if (controller.socket) {
-                controller.socket.emit('run', commandName);
-                if (this.state.port) {
-                    controller.socket.emit('command', this.state.port, 'run', commandName);
-                }
-            }
-        }
+        console.log(`GPIO Bridge: Fetching ${url}`);
+        fetch(url).catch(err => console.error('Bridge request failed:', err));
     };
 
     switchToLaser = () => {
@@ -356,32 +331,10 @@ class App extends PureComponent {
                     </SettingsTitle>
                     {showSettings && (
                         <div>
-                            <CheckboxLabel>
-                                <input
-                                    type="checkbox"
-                                    checked={settings.directControl}
-                                    onChange={e => this.handleSettingChange(null, 'directControl', e.target.checked)}
-                                />
-                                Direkte Steuerung (über GPIO Bridge)
-                            </CheckboxLabel>
-
-                            {settings.directControl ? (
-                                <div style={{ marginBottom: '10px' }}>
-                                    <Label>Bridge URL</Label>
-                                    <Input type="text" value={settings.bridgeUrl} onChange={e => this.handleSettingChange(null, 'bridgeUrl', e.target.value)} />
-                                </div>
-                            ) : (
-                                <Grid>
-                                    <div>
-                                        <Label>CMD High</Label>
-                                        <Input type="text" value={settings.commandOn} onChange={e => this.handleSettingChange(null, 'commandOn', e.target.value)} />
-                                    </div>
-                                    <div>
-                                        <Label>CMD Low</Label>
-                                        <Input type="text" value={settings.commandOff} onChange={e => this.handleSettingChange(null, 'commandOff', e.target.value)} />
-                                    </div>
-                                </Grid>
-                            )}
+                            <div style={{ marginBottom: '10px' }}>
+                                <Label>Bridge URL</Label>
+                                <Input type="text" value={settings.bridgeUrl} onChange={e => this.handleSettingChange(null, 'bridgeUrl', e.target.value)} />
+                            </div>
 
                             <div style={{ marginBottom: '10px' }}>
                                 <Label>GPIO Pin</Label>

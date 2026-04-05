@@ -38,9 +38,9 @@ Starte CNCjs mit dem `--mount`-Parameter:
 cncjs --mount /widget:/home/pi/cncjs-widgets/spindel-laser-switch
 ```
 
-## Direkte GPIO Steuerung einrichten (Empfohlen)
+## Direkte GPIO Steuerung einrichten (Wichtig)
 
-Das Widget steuert den GPIO Pin über eine kleine Bridge, die direkt mit Node.js läuft.
+Da Web-Browser keinen direkten Zugriff auf Hardware-Pins haben, verwenden wir eine kleine Node.js-Bridge, die auf dem Pi läuft.
 
 ### 1. Bridge vorbereiten
 
@@ -50,12 +50,14 @@ Kopiere die Dateien und setze die Berechtigungen:
 mkdir -p /home/pi/scripts
 cp scripts/gpio-set.sh scripts/gpio-bridge.cjs /home/pi/scripts/
 
-# WICHTIG: Berechtigungen setzen
+# Berechtigungen setzen
 chmod +x /home/pi/scripts/gpio-set.sh
 sudo chown pi:pi /home/pi/scripts/gpio-set.sh /home/pi/scripts/gpio-bridge.cjs
 ```
 
 ### 2. Bridge starten (mit pm2)
+
+Es wird empfohlen, die Bridge mit `pm2` zu verwalten, damit sie immer im Hintergrund läuft:
 
 ```bash
 pm2 start /home/pi/scripts/gpio-bridge.cjs --name gpio-bridge
@@ -68,26 +70,21 @@ pm2 save
 2. Aktiviere das **Custom** Widget.
 3. Klicke auf das Bearbeiten-Icon des Custom Widgets.
 4. Gib die URL `/widget/` ein.
-5. In den **Settings** des Widgets (auf den Titel klicken) ist **Direkte Steuerung** standardmäßig aktiv. Hier kannst du den GPIO Pin und die Grbl-Werte anpassen.
+5. In den **Settings** des Widgets (auf den Titel klicken) kannst du den GPIO Pin und die Grbl-Werte anpassen.
 
 ## Fehlerbehebung (Debugging)
 
 ### 1. Bridge-Logs prüfen
-Da die Bridge über `pm2` läuft, kannst du die Logs dort einsehen. Hier siehst du jeden Aufruf und eventuelle Fehler:
 ```bash
 pm2 logs gpio-bridge
 ```
 
 ### 2. GPIO Berechtigungen
-Der User, unter dem die Bridge läuft, muss Mitglied der Gruppe `gpio` sein:
+Der User muss in der Gruppe `gpio` sein:
 ```bash
 sudo usermod -a -G gpio $USER
 ```
-(Danach einmal aus- und einloggen).
-
-### 3. Manueller Test der Bridge
-Du kannst die Bridge direkt im Browser testen:
-`http://deine-pi-ip:8008/?pin=16&state=on`
+(Danach neu einloggen).
 
 ## Lizenz
 
