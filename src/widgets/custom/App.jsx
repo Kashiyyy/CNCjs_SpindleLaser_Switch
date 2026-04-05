@@ -149,14 +149,7 @@ const WIDGETS = [
     { id: 'tool', name: 'Tool' },
     { id: 'visualizer', name: 'Visualizer' },
     { id: 'webcam', name: 'Webcam' },
-    { id: 'custom', name: 'Custom' },
-    // Widgets with "-widget" suffix for compatibility
-    { id: 'marlin-widget', name: 'Marlin (W)' },
-    { id: 'smoothie-widget', name: 'Smoothie (W)' },
-    { id: 'tinyg-widget', name: 'TinyG (W)' },
-    { id: 'autolevel-widget', name: 'Autolevel (W)' },
-    { id: 'tool-widget', name: 'Tool (W)' },
-    { id: 'custom-widget', name: 'Custom (W)' }
+    { id: 'custom', name: 'Custom' }
 ];
 
 const getLayout = () => WIDGETS.map((w, index) => ({
@@ -192,6 +185,7 @@ class App extends PureComponent {
     };
 
     state = {
+        applyingLayout: false,
         port: controller.port,
         controller: {
             type: controller.type,
@@ -228,10 +222,6 @@ class App extends PureComponent {
         setTimeout(() => {
             this.applyLayout(this.state.currentMode);
         }, 1000);
-        // Retry layout application after 3 seconds to be sure
-        setTimeout(() => {
-            this.applyLayout(this.state.currentMode);
-        }, 3000);
     }
 
     componentWillUnmount() {
@@ -370,60 +360,79 @@ class App extends PureComponent {
         fetch(url).catch(err => console.error('Bridge request failed:', err));
     };
 
-    applyLayout = (mode) => {
+    applyLayout = async (mode) => {
         const { settings } = this.state;
         const { token } = this.props;
         const layout = settings[mode.toLowerCase()].layout;
 
-        if (!layout) return;
+        if (!layout || !token) return;
 
         console.log(`Applying layout for ${mode}:`, layout);
+        this.setState({ applyingLayout: true });
 
-        // 1. Set visibility for each widget
-        layout.forEach((item, index) => {
-            // Delay slightly to avoid flooding postMessage
-            setTimeout(() => {
-                // Send standard visibility action
-                window.parent.postMessage({
-                    token: token,
-                    action: {
-                        type: 'widget:visibility',
-                        payload: {
-                            id: item.id,
-                            widget: item.id,
-                            visible: item.visible
-                        }
-                    }
-                }, '*');
+        try {
+            // Fetch current config
+            const response = await fetch('/api/config', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            if (!response.ok) throw new Error('Failed to fetch config');
+            const config = await response.json();
 
-                // Send explicit show/hide actions for better compatibility
-                window.parent.postMessage({
-                    token: token,
-                    action: {
-                        type: item.visible ? 'widget:show' : 'widget:hide',
-                        payload: {
-                            id: item.id,
-                            widget: item.id
-                        }
-                    }
-                }, '*');
-            }, index * 20);
-        });
+            // Update workspace layout
+            const primary = []; // Left side
+            const secondary = []; // Right side
 
-        // 2. Set the overall layout/order
-        // Note: CNCjs might need a specific action to rearrange widgets.
-        // We'll send a custom action that the parent (or a user script) could potentially handle.
-        setTimeout(() => {
+            layout.forEach(item => {
+                if (!item.visible) return;
+                if (item.side === 'left') {
+                    primary.push(item.id);
+                } else {
+                    secondary.push(item.id);
+                }
+            });
+
+            // Safety: Ensure 'custom' widget (this widget) is always present
+            if (!primary.includes('custom') && !secondary.includes('custom')) {
+                secondary.push('custom');
+            }
+
+            config.state.workspace.container.primary.widgets = primary;
+            config.state.workspace.container.secondary.widgets = secondary;
+
+            // Save updated config
+            const saveResponse = await fetch('/api/config', {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(config)
+            });
+
+            if (!saveResponse.ok) throw new Error('Failed to save config');
+            console.log('Layout applied successfully');
+        } catch (err) {
+            console.error('Error applying layout:', err);
+        } finally {
+            this.setState({ applyingLayout: false });
+        }
+
+        // Also send postMessage for immediate (though potentially non-persistent) update
+        layout.forEach(item => {
             window.parent.postMessage({
                 token: token,
                 action: {
-                    type: 'widget:layout',
+                    type: 'widget:visibility',
                     payload: {
-                        layout: layout
+                        id: item.id,
+                        widget: item.id,
+                        visible: item.visible
                     }
                 }
             }, '*');
-        }, layout.length * 20 + 50);
+        });
     };
 
     switchToLaser = () => {
@@ -477,14 +486,16 @@ class App extends PureComponent {
     };
 
     renderLayoutTab(mode) {
-        const { settings } = this.state;
+        const { settings, applyingLayout } = this.state;
         const layout = settings[mode].layout || getLayout();
 
         return (
             <div>
                 <div style={{ marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '11px', color: '#666' }}>Configure {mode} Layout</span>
-                    <IconButton onClick={() => this.applyLayout(mode)}>Apply Layout Now</IconButton>
+                    <IconButton disabled={applyingLayout} onClick={() => this.applyLayout(mode)}>
+                        {applyingLayout ? 'Applying...' : 'Apply Layout Now'}
+                    </IconButton>
                 </div>
                 {layout.map((item, index) => {
                     const widgetInfo = WIDGETS.find(w => w.id === item.id) || { name: item.id };
