@@ -36,6 +36,12 @@ const Button = styled.button`
     }
 `;
 
+const TestButton = styled(Button)`
+    padding: 5px;
+    font-size: 12px;
+    margin-top: 5px;
+`;
+
 const StatusText = styled.div`
     margin-bottom: 10px;
     font-size: 14px;
@@ -100,7 +106,8 @@ const DEFAULT_SETTINGS = {
         $120: 500,
         $121: 500
     },
-    gpioPin: 17
+    gpioPin: 16,
+    bridgeUrl: `http://${window.location.hostname}:8008`
 };
 
 class App extends PureComponent {
@@ -174,7 +181,11 @@ class App extends PureComponent {
     }
 
     handleSettingChange = (mode, key, value) => {
-        const numValue = Number(value);
+        let processedValue = value;
+        if (typeof DEFAULT_SETTINGS[key] === 'number' || (mode && typeof DEFAULT_SETTINGS[mode][key] === 'number')) {
+            processedValue = Number(value);
+        }
+
         this.setState(prevState => {
             let newSettings;
             if (mode) {
@@ -182,13 +193,13 @@ class App extends PureComponent {
                     ...prevState.settings,
                     [mode]: {
                         ...prevState.settings[mode],
-                        [key]: numValue
+                        [key]: processedValue
                     }
                 };
             } else {
                 newSettings = {
                     ...prevState.settings,
-                    [key]: numValue
+                    [key]: processedValue
                 };
             }
             this.saveSettings(newSettings);
@@ -199,24 +210,18 @@ class App extends PureComponent {
     sendGrblCommands = (commands) => {
         commands.forEach(cmd => {
             console.log('Sending command to Grbl:', cmd);
+            // controller.command automatically prepends the active connection identifier (port)
             controller.command('gcode', cmd);
         });
     };
 
     updateGpio = (state) => {
-        const { port, settings } = this.state;
-        const pin = settings.gpioPin;
-        const value = state === 'high' ? 1 : 0;
+        const { settings } = this.state;
+        const val = state === 'high' ? 'on' : 'off';
+        const url = `${settings.bridgeUrl}/?pin=${settings.gpioPin}&state=${val}`;
 
-        if (!port) {
-            console.warn('Cannot update GPIO: No serial port connection');
-            return;
-        }
-
-        console.log(`Setting GPIO pin ${pin} to ${state} (${value}) via port ${port}`);
-
-        // Use the serial port identifier to send the GPIO command
-        controller.socket.emit('command', port, 'raspi:gpio:write', pin, value);
+        console.log(`GPIO Bridge: Fetching ${url}`);
+        fetch(url).catch(err => console.error('Bridge request failed:', err));
     };
 
     switchToLaser = () => {
@@ -327,9 +332,19 @@ class App extends PureComponent {
                     {showSettings && (
                         <div>
                             <div style={{ marginBottom: '10px' }}>
-                                <Label>Raspberry Pi GPIO Pin</Label>
-                                <Input type="number" value={settings.gpioPin} onChange={e => this.handleSettingChange(null, 'gpioPin', e.target.value)} />
+                                <Label>Bridge URL</Label>
+                                <Input type="text" value={settings.bridgeUrl} onChange={e => this.handleSettingChange(null, 'bridgeUrl', e.target.value)} />
                             </div>
+
+                            <div style={{ marginBottom: '10px' }}>
+                                <Label>GPIO Pin</Label>
+                                <Input type="number" value={settings.gpioPin} onChange={e => this.handleSettingChange(null, 'gpioPin', e.target.value)} />
+                                <div style={{ display: 'flex', gap: '5px' }}>
+                                    <TestButton onClick={() => this.updateGpio('high')}>Test High</TestButton>
+                                    <TestButton onClick={() => this.updateGpio('low')}>Test Low</TestButton>
+                                </div>
+                            </div>
+
                             <div style={{ fontWeight: 'bold', fontSize: '12px', marginBottom: '5px' }}>Spindel Settings</div>
                             <Grid>
                                 <div>

@@ -1,71 +1,90 @@
 # CNCjs_SpindelLaser_Switch
 
-Ein Custom Widget für CNCjs zum Umschalten zwischen Spindel und Laser.
+Ein Custom Widget für CNCjs zum Umschalten zwischen Spindel und Laser, inklusive direkter Steuerung eines Raspberry Pi GPIO Pins.
 
-## Installation
+## Funktionsweise
 
-Folge diesen Schritten, um das Widget zu installieren und in CNCjs zu integrieren:
+Das Widget erlaubt das Umschalten zwischen Laser- und Spindel-Modus. Dabei werden:
+1. Bestimmte Grbl-Parameter ($32, $30, $110, $111, $120, $121) aktualisiert.
+2. Ein GPIO Pin am Raspberry Pi geschaltet (HIGH für Laser, LOW für Spindel).
 
-### 1. Repository klonen
+Das Umschalten ist aus Sicherheitsgründen nur möglich, wenn sich Grbl im **Idle** Zustand befindet.
 
-Klone dieses Repository auf deinen Computer oder Raspberry Pi:
+## Installation des Widgets
+
+### 1. Repository klonen & Bauen
+
+Klone dieses Repository auf deinen Raspberry Pi und baue das Projekt:
 
 ```bash
 git clone https://github.com/cncjs/CNCjs_SpindelLaser_Switch.git
 cd CNCjs_SpindelLaser_Switch
-```
-
-### 2. Abhängigkeiten installieren
-
-Verwende `npm`, um die notwendigen Pakete zu installieren:
-
-```bash
 npm install
-```
-
-### 3. Widget bauen
-
-Erstelle die Produktionsdateien im `dist`-Ordner:
-
-```bash
 npm run build
 ```
 
-### 4. Widget in CNCjs bereitstellen
+### 2. Widget in CNCjs bereitstellen
 
-Verschiebe die gebauten Dateien an einen permanenten Ort (z.B. `/home/pi/cncjs-widgets/spindel-laser-switch`):
+Verschiebe die gebauten Dateien an einen permanenten Ort:
 
 ```bash
 mkdir -p /home/pi/cncjs-widgets/spindel-laser-switch
 cp -af dist/* /home/pi/cncjs-widgets/spindel-laser-switch/
 ```
 
-Starte CNCjs mit dem `--mount`-Parameter, um das Widget verfügbar zu machen:
+Starte CNCjs mit dem `--mount`-Parameter:
 
 ```bash
 cncjs --mount /widget:/home/pi/cncjs-widgets/spindel-laser-switch
 ```
 
-*Hinweis: Wenn du CNCjs bereits als Dienst (z.B. mit pm2) ausführst, musst du die Startparameter in deiner Konfiguration anpassen.*
+## Direkte GPIO Steuerung einrichten (Wichtig)
 
-### 5. In CNCjs konfigurieren
+Da Web-Browser keinen direkten Zugriff auf Hardware-Pins haben, verwenden wir eine kleine Node.js-Bridge, die auf dem Pi läuft.
 
-1. Öffne CNCjs im Browser.
-2. Klicke auf **Manage Widgets** (Zahnrad-Icon in der Widget-Leiste).
-3. Aktiviere das **Custom** Widget.
-4. Klicke auf das Bearbeiten-Icon (Schraubenschlüssel/Zahnrad) des neuen Custom Widgets.
-5. Gib die URL für das gemountete Widget ein (Standardmäßig `/widget/`).
-6. Wenn alles korrekt konfiguriert ist, erscheint das Widget in deiner CNCjs-Oberfläche.
+### 1. Bridge vorbereiten
 
-## Entwicklung
+Kopiere die Dateien und setze die Berechtigungen:
 
-Um das Widget lokal zu entwickeln:
+```bash
+mkdir -p /home/pi/scripts
+cp scripts/gpio-set.sh scripts/gpio-bridge.cjs /home/pi/scripts/
 
-1. Starte den Entwicklungsserver:
-   ```bash
-   npm run dev
-   ```
-2. Öffne den angezeigten Link (standardmäßig `http://localhost:5173/`).
+# Berechtigungen setzen
+chmod +x /home/pi/scripts/gpio-set.sh
+sudo chown pi:pi /home/pi/scripts/gpio-set.sh /home/pi/scripts/gpio-bridge.cjs
+```
+
+### 2. Bridge starten (mit pm2)
+
+Es wird empfohlen, die Bridge mit `pm2` zu verwalten, damit sie immer im Hintergrund läuft:
+
+```bash
+pm2 start /home/pi/scripts/gpio-bridge.cjs --name gpio-bridge
+pm2 save
+```
+
+## In CNCjs konfigurieren
+
+1. Klicke in der Widget-Leiste auf **Manage Widgets**.
+2. Aktiviere das **Custom** Widget.
+3. Klicke auf das Bearbeiten-Icon des Custom Widgets.
+4. Gib die URL `/widget/` ein.
+5. In den **Settings** des Widgets (auf den Titel klicken) kannst du den GPIO Pin und die Grbl-Werte anpassen.
+
+## Fehlerbehebung (Debugging)
+
+### 1. Bridge-Logs prüfen
+```bash
+pm2 logs gpio-bridge
+```
+
+### 2. GPIO Berechtigungen
+Der User muss in der Gruppe `gpio` sein:
+```bash
+sudo usermod -a -G gpio $USER
+```
+(Danach neu einloggen).
 
 ## Lizenz
 
