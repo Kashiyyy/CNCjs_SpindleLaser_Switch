@@ -51,7 +51,10 @@ window.addEventListener('message', (event) => {
 });
 
 try {
-  customWidget.render({ token: params.token });
+  customWidget.render({
+    token: params.token,
+    host: params.host || ''
+  });
 
   // Connect to a socket.io server
   const host = params.host || ''; // e.g. http://localhost:8000

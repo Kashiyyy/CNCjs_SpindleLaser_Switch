@@ -181,7 +181,8 @@ const getDefaultSettings = () => ({
 
 class App extends PureComponent {
     static propTypes = {
-        token: PropTypes.string
+        token: PropTypes.string,
+        host: PropTypes.string
     };
 
     state = {
@@ -253,7 +254,8 @@ class App extends PureComponent {
                 ['spindel', 'laser'].forEach(mode => {
                     if (settings[mode] && settings[mode].layout) {
                         // Merge saved layout with default layout to add missing widgets
-                        const savedLayout = settings[mode].layout;
+                        // ALSO filter out widgets that are no longer in WIDGETS (ensure exactly 17)
+                        const savedLayout = settings[mode].layout.filter(sw => WIDGETS.find(w => w.id === sw.id));
                         const defaultLayout = getLayout();
                         const missingWidgets = defaultLayout.filter(dw => !savedLayout.find(sw => sw.id === dw.id));
                         merged[mode].layout = [...savedLayout, ...missingWidgets];
@@ -362,27 +364,41 @@ class App extends PureComponent {
 
     applyLayout = async (mode) => {
         const { settings } = this.state;
-        const { token } = this.props;
+        const { token, host } = this.props;
         const layout = settings[mode.toLowerCase()].layout;
 
-        if (!layout || !token) return;
+        if (!layout || !token) {
+            console.log('Skipping applyLayout: missing layout or token');
+            return;
+        }
 
-        console.log(`Applying layout for ${mode}:`, layout);
+        console.log(`[Debug] Applying layout for ${mode}:`, layout);
+        console.log(`[Debug] Token: ${token.substring(0, 10)}...`);
+        console.log(`[Debug] Host: ${host}`);
+
         this.setState({ applyingLayout: true });
 
         try {
+            const apiUrl = `${host}/api/config`.replace('//api', '/api');
+            console.log(`[Debug] Fetching config from ${apiUrl}`);
+
             // Fetch current config
-            const response = await fetch('/api/config', {
+            const response = await fetch(apiUrl, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
             });
-            if (!response.ok) throw new Error('Failed to fetch config');
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Failed to fetch config: ${response.status} ${errorText}`);
+            }
             const config = await response.json();
+            console.log('[Debug] Current Config received');
 
             // Update workspace layout
             const primary = []; // Left side
             const secondary = []; // Right side
+            const defaultContainer = config.state.workspace.container.default.widgets || [];
 
             layout.forEach(item => {
                 if (!item.visible) return;
@@ -393,16 +409,26 @@ class App extends PureComponent {
                 }
             });
 
+            // Ensure widgets are only in ONE container. Remove from 'default' if present in others
+            const allAssigned = [...primary, ...secondary];
+            const filteredDefault = defaultContainer.filter(id => !allAssigned.includes(id));
+
             // Safety: Ensure 'custom' widget (this widget) is always present
             if (!primary.includes('custom') && !secondary.includes('custom')) {
                 secondary.push('custom');
             }
 
+            console.log('[Debug] New Primary (Left):', primary);
+            console.log('[Debug] New Secondary (Right):', secondary);
+            console.log('[Debug] New Default:', filteredDefault);
+
             config.state.workspace.container.primary.widgets = primary;
             config.state.workspace.container.secondary.widgets = secondary;
+            config.state.workspace.container.default.widgets = filteredDefault;
 
             // Save updated config
-            const saveResponse = await fetch('/api/config', {
+            console.log(`[Debug] Saving config back to ${apiUrl}`);
+            const saveResponse = await fetch(apiUrl, {
                 method: 'PUT',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -411,10 +437,14 @@ class App extends PureComponent {
                 body: JSON.stringify(config)
             });
 
-            if (!saveResponse.ok) throw new Error('Failed to save config');
+            if (!saveResponse.ok) {
+                const errorText = await saveResponse.text();
+                throw new Error(`Failed to save config: ${saveResponse.status} ${errorText}`);
+            }
             console.log('Layout applied successfully');
         } catch (err) {
             console.error('Error applying layout:', err);
+            alert(`Error applying layout: ${err.message}`);
         } finally {
             this.setState({ applyingLayout: false });
         }
