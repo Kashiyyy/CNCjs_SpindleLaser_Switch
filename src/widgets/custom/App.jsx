@@ -137,28 +137,35 @@ const WIDGETS = [
     { id: 'connection', name: 'Connection' },
     { id: 'console', name: 'Console' },
     { id: 'gcode', name: 'G-code' },
+    { id: 'grbl', name: 'Grbl' },
+    { id: 'marlin', name: 'Marlin' },
+    { id: 'smoothie', name: 'Smoothie' },
+    { id: 'tinyg', name: 'TinyG' },
     { id: 'laser', name: 'Laser' },
     { id: 'macro', name: 'Macro' },
     { id: 'probe', name: 'Probe' },
     { id: 'spindle', name: 'Spindle' },
+    { id: 'autolevel', name: 'Autolevel' },
+    { id: 'tool', name: 'Tool' },
     { id: 'visualizer', name: 'Visualizer' },
-    { id: 'webcam', name: 'Webcam' }
+    { id: 'webcam', name: 'Webcam' },
+    { id: 'custom', name: 'Custom' }
 ];
 
-const DEFAULT_LAYOUT = WIDGETS.map((w, index) => ({
+const getLayout = () => WIDGETS.map((w, index) => ({
     id: w.id,
     visible: true,
-    side: index < 5 ? 'left' : 'right'
+    side: index < 8 ? 'left' : 'right'
 }));
 
-const DEFAULT_SETTINGS = {
+const getDefaultSettings = () => ({
     spindel: {
         $30: 24000,
         $110: 2000,
         $111: 2000,
         $120: 100,
         $121: 100,
-        layout: [...DEFAULT_LAYOUT]
+        layout: getLayout()
     },
     laser: {
         $30: 1000,
@@ -166,11 +173,11 @@ const DEFAULT_SETTINGS = {
         $111: 5000,
         $120: 500,
         $121: 500,
-        layout: [...DEFAULT_LAYOUT]
+        layout: getLayout()
     },
     gpioPin: 16,
     bridgeUrl: `http://${window.location.hostname}:8008`
-};
+});
 
 class App extends PureComponent {
     static propTypes = {
@@ -236,16 +243,30 @@ class App extends PureComponent {
 
     loadSettings() {
         const saved = localStorage.getItem('CNCjs_SpindelLaser_Switch_Settings');
+        const defaultSettings = getDefaultSettings();
         if (saved) {
             try {
                 const settings = JSON.parse(saved);
-                return { ...DEFAULT_SETTINGS, ...settings };
+                // Ensure layout exists and has all widgets
+                const merged = { ...defaultSettings, ...settings };
+                ['spindel', 'laser'].forEach(mode => {
+                    if (settings[mode] && settings[mode].layout) {
+                        // Merge saved layout with default layout to add missing widgets
+                        const savedLayout = settings[mode].layout;
+                        const defaultLayout = getLayout();
+                        const missingWidgets = defaultLayout.filter(dw => !savedLayout.find(sw => sw.id === dw.id));
+                        merged[mode].layout = [...savedLayout, ...missingWidgets];
+                    } else {
+                        merged[mode].layout = getLayout();
+                    }
+                });
+                return merged;
             } catch (err) {
                 console.error(err);
-                return DEFAULT_SETTINGS;
+                return defaultSettings;
             }
         }
-        return DEFAULT_SETTINGS;
+        return defaultSettings;
     }
 
     saveSettings(settings) {
@@ -253,8 +274,9 @@ class App extends PureComponent {
     }
 
     handleSettingChange = (mode, key, value) => {
+        const defaultSettings = getDefaultSettings();
         let processedValue = value;
-        if (typeof DEFAULT_SETTINGS[key] === 'number' || (mode && typeof DEFAULT_SETTINGS[mode][key] === 'number')) {
+        if (typeof defaultSettings[key] === 'number' || (mode && typeof defaultSettings[mode][key] === 'number')) {
             processedValue = Number(value);
         }
 
@@ -290,6 +312,8 @@ class App extends PureComponent {
             };
             this.saveSettings(newSettings);
             return { settings: newSettings };
+        }, () => {
+            this.applyLayout(mode);
         });
     };
 
@@ -424,12 +448,13 @@ class App extends PureComponent {
 
     renderLayoutTab(mode) {
         const { settings } = this.state;
-        const layout = settings[mode].layout || DEFAULT_LAYOUT;
+        const layout = settings[mode].layout || getLayout();
 
         return (
             <div>
-                <div style={{ marginBottom: '10px', fontSize: '11px', color: '#666' }}>
-                    Configure {mode} Layout
+                <div style={{ marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '11px', color: '#666' }}>Configure {mode} Layout</span>
+                    <IconButton onClick={() => this.applyLayout(mode)}>Apply Layout Now</IconButton>
                 </div>
                 {layout.map((item, index) => {
                     const widgetInfo = WIDGETS.find(w => w.id === item.id) || { name: item.id };
