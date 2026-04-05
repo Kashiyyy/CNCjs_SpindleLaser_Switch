@@ -362,9 +362,9 @@ class App extends PureComponent {
         fetch(url).catch(err => console.error('Bridge request failed:', err));
     };
 
-    applyLayout = async (mode) => {
+    applyLayout = (mode) => {
         const { settings } = this.state;
-        const { token, host } = this.props;
+        const { token } = this.props;
         const layout = settings[mode.toLowerCase()].layout;
 
         if (!layout || !token) {
@@ -373,96 +373,50 @@ class App extends PureComponent {
         }
 
         console.log(`[Debug] Applying layout for ${mode}:`, layout);
-        console.log(`[Debug] Token: ${token.substring(0, 10)}...`);
-        console.log(`[Debug] Host: ${host}`);
-
         this.setState({ applyingLayout: true });
 
-        try {
-            const apiUrl = `${host}/api/config`.replace('//api', '/api');
-            console.log(`[Debug] Fetching config from ${apiUrl}`);
+        // We'll send multiple postMessage formats to maximize compatibility,
+        // since the REST API /api/config returned 404 and previous postMessage failed.
+        layout.forEach((item, index) => {
+            setTimeout(() => {
+                // Try format 1: Flat type action
+                window.parent.postMessage({
+                    token: token,
+                    action: item.visible ? 'widget:show' : 'widget:hide',
+                    payload: { id: item.id, widget: item.id }
+                }, '*');
 
-            // Fetch current config
-            const response = await fetch(apiUrl, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Failed to fetch config: ${response.status} ${errorText}`);
-            }
-            const config = await response.json();
-            console.log('[Debug] Current Config received');
-
-            // Update workspace layout
-            const primary = []; // Left side
-            const secondary = []; // Right side
-            const defaultContainer = config.state.workspace.container.default.widgets || [];
-
-            layout.forEach(item => {
-                if (!item.visible) return;
-                if (item.side === 'left') {
-                    primary.push(item.id);
-                } else {
-                    secondary.push(item.id);
-                }
-            });
-
-            // Ensure widgets are only in ONE container. Remove from 'default' if present in others
-            const allAssigned = [...primary, ...secondary];
-            const filteredDefault = defaultContainer.filter(id => !allAssigned.includes(id));
-
-            // Safety: Ensure 'custom' widget (this widget) is always present
-            if (!primary.includes('custom') && !secondary.includes('custom')) {
-                secondary.push('custom');
-            }
-
-            console.log('[Debug] New Primary (Left):', primary);
-            console.log('[Debug] New Secondary (Right):', secondary);
-            console.log('[Debug] New Default:', filteredDefault);
-
-            config.state.workspace.container.primary.widgets = primary;
-            config.state.workspace.container.secondary.widgets = secondary;
-            config.state.workspace.container.default.widgets = filteredDefault;
-
-            // Save updated config
-            console.log(`[Debug] Saving config back to ${apiUrl}`);
-            const saveResponse = await fetch(apiUrl, {
-                method: 'PUT',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(config)
-            });
-
-            if (!saveResponse.ok) {
-                const errorText = await saveResponse.text();
-                throw new Error(`Failed to save config: ${saveResponse.status} ${errorText}`);
-            }
-            console.log('Layout applied successfully');
-        } catch (err) {
-            console.error('Error applying layout:', err);
-            alert(`Error applying layout: ${err.message}`);
-        } finally {
-            this.setState({ applyingLayout: false });
-        }
-
-        // Also send postMessage for immediate (though potentially non-persistent) update
-        layout.forEach(item => {
-            window.parent.postMessage({
-                token: token,
-                action: {
-                    type: 'widget:visibility',
-                    payload: {
-                        id: item.id,
-                        widget: item.id,
-                        visible: item.visible
+                // Try format 2: Nested action with type and payload (standard for some CNCjs versions)
+                window.parent.postMessage({
+                    token: token,
+                    action: {
+                        type: item.visible ? 'widget:show' : 'widget:hide',
+                        payload: { id: item.id, widget: item.id }
                     }
-                }
-            }, '*');
+                }, '*');
+
+                // Try format 3: widget:visibility action
+                window.parent.postMessage({
+                    token: token,
+                    action: {
+                        type: 'widget:visibility',
+                        payload: { id: item.id, widget: item.id, visible: item.visible }
+                    }
+                }, '*');
+
+                // Try format 4: Flat visibility action
+                window.parent.postMessage({
+                    token: token,
+                    action: 'widget:visibility',
+                    payload: { id: item.id, widget: item.id, visible: item.visible }
+                }, '*');
+
+            }, index * 100); // 100ms delay between widgets
         });
+
+        setTimeout(() => {
+            this.setState({ applyingLayout: false });
+        }, layout.length * 100 + 500);
     };
 
     switchToLaser = () => {
