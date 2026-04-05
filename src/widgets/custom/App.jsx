@@ -149,7 +149,14 @@ const WIDGETS = [
     { id: 'tool', name: 'Tool' },
     { id: 'visualizer', name: 'Visualizer' },
     { id: 'webcam', name: 'Webcam' },
-    { id: 'custom', name: 'Custom' }
+    { id: 'custom', name: 'Custom' },
+    // Widgets with "-widget" suffix for compatibility
+    { id: 'marlin-widget', name: 'Marlin (W)' },
+    { id: 'smoothie-widget', name: 'Smoothie (W)' },
+    { id: 'tinyg-widget', name: 'TinyG (W)' },
+    { id: 'autolevel-widget', name: 'Autolevel (W)' },
+    { id: 'tool-widget', name: 'Tool (W)' },
+    { id: 'custom-widget', name: 'Custom (W)' }
 ];
 
 const getLayout = () => WIDGETS.map((w, index) => ({
@@ -221,6 +228,10 @@ class App extends PureComponent {
         setTimeout(() => {
             this.applyLayout(this.state.currentMode);
         }, 1000);
+        // Retry layout application after 3 seconds to be sure
+        setTimeout(() => {
+            this.applyLayout(this.state.currentMode);
+        }, 3000);
     }
 
     componentWillUnmount() {
@@ -366,34 +377,53 @@ class App extends PureComponent {
 
         if (!layout) return;
 
-        console.log(`Applying layout for ${mode}`);
+        console.log(`Applying layout for ${mode}:`, layout);
 
         // 1. Set visibility for each widget
-        layout.forEach(item => {
-            window.parent.postMessage({
-                token: token,
-                action: {
-                    type: 'widget:visibility',
-                    payload: {
-                        widget: item.id,
-                        visible: item.visible
+        layout.forEach((item, index) => {
+            // Delay slightly to avoid flooding postMessage
+            setTimeout(() => {
+                // Send standard visibility action
+                window.parent.postMessage({
+                    token: token,
+                    action: {
+                        type: 'widget:visibility',
+                        payload: {
+                            id: item.id,
+                            widget: item.id,
+                            visible: item.visible
+                        }
                     }
-                }
-            }, '*');
+                }, '*');
+
+                // Send explicit show/hide actions for better compatibility
+                window.parent.postMessage({
+                    token: token,
+                    action: {
+                        type: item.visible ? 'widget:show' : 'widget:hide',
+                        payload: {
+                            id: item.id,
+                            widget: item.id
+                        }
+                    }
+                }, '*');
+            }, index * 20);
         });
 
         // 2. Set the overall layout/order
         // Note: CNCjs might need a specific action to rearrange widgets.
         // We'll send a custom action that the parent (or a user script) could potentially handle.
-        window.parent.postMessage({
-            token: token,
-            action: {
-                type: 'widget:layout',
-                payload: {
-                    layout: layout
+        setTimeout(() => {
+            window.parent.postMessage({
+                token: token,
+                action: {
+                    type: 'widget:layout',
+                    payload: {
+                        layout: layout
+                    }
                 }
-            }
-        }, '*');
+            }, '*');
+        }, layout.length * 20 + 50);
     };
 
     switchToLaser = () => {
