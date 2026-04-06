@@ -381,7 +381,7 @@ class App extends PureComponent {
             const parentStorage = window.parent.localStorage;
             if (parentStorage) {
                 // Common CNCjs localStorage keys
-                const keys = ['cncjs-app', 'cncjs'];
+                const keys = ['cnc', 'cncjs-app', 'cncjs'];
                 let found = false;
 
                 keys.forEach(key => {
