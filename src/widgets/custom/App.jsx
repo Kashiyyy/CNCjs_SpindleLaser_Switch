@@ -155,10 +155,11 @@ const WIDGETS = [
 const getLayout = () => WIDGETS.map((w, index) => ({
     id: w.id,
     visible: true,
-    side: index < 7 ? 'left' : 'right'
+    side: ['visualizer', 'connection', 'console', 'grbl'].includes(w.id) ? 'left' : 'right'
 }));
 
 const getDefaultSettings = () => ({
+    autoReload: true,
     spindel: {
         $30: 24000,
         $110: 2000,
@@ -251,16 +252,17 @@ class App extends PureComponent {
                 const settings = JSON.parse(saved);
                 const merged = { ...defaultSettings, ...settings };
                 ['spindel', 'laser'].forEach(mode => {
-                    // Create a clean layout from current WIDGETS
-                    const defaultLayout = getLayout();
                     if (settings[mode] && settings[mode].layout) {
-                        // Use saved settings for widgets that still exist
-                        merged[mode].layout = defaultLayout.map(dw => {
-                            const sw = settings[mode].layout.find(item => item.id === dw.id);
-                            return sw ? { ...dw, ...sw } : dw;
-                        });
+                        // Use saved layout as base to preserve order
+                        const savedLayout = settings[mode].layout.filter(sw => WIDGETS.find(w => w.id === sw.id));
+                        const missingWidgets = WIDGETS.filter(w => !savedLayout.find(sw => sw.id === w.id));
+
+                        const defaultLayout = getLayout();
+                        const missingLayout = missingWidgets.map(w => defaultLayout.find(dw => dw.id === w.id));
+
+                        merged[mode].layout = [...savedLayout, ...missingLayout];
                     } else {
-                        merged[mode].layout = defaultLayout;
+                        merged[mode].layout = getLayout();
                     }
                 });
                 return merged;
@@ -362,7 +364,7 @@ class App extends PureComponent {
         fetch(url).catch(err => console.error('Bridge request failed:', err));
     };
 
-    applyLayout = (mode) => {
+    applyLayout = (mode, forceReload = false) => {
         const { settings } = this.state;
         const { token } = this.props;
         const layout = settings[mode.toLowerCase()].layout;
@@ -492,6 +494,9 @@ class App extends PureComponent {
 
         setTimeout(() => {
             this.setState({ applyingLayout: false });
+            if (forceReload || settings.autoReload) {
+                window.parent.location.reload();
+            }
         }, 1000);
     };
 
@@ -555,7 +560,7 @@ class App extends PureComponent {
                     <span style={{ fontSize: '11px', color: '#666' }}>Configure {mode} Layout</span>
                     <div style={{ display: 'flex', gap: '5px' }}>
                         <IconButton onClick={() => window.parent.location.reload()}>🔄 Reload CNCjs</IconButton>
-                        <IconButton disabled={applyingLayout} onClick={() => this.applyLayout(mode)}>
+                        <IconButton disabled={applyingLayout} onClick={() => this.applyLayout(mode, true)}>
                             {applyingLayout ? 'Applying...' : 'Apply Layout Now'}
                         </IconButton>
                     </div>
@@ -653,6 +658,17 @@ class App extends PureComponent {
 
                             {activeTab === 'general' && (
                                 <div>
+                                    <div style={{ marginBottom: '10px' }}>
+                                        <Label>
+                                            <input
+                                                type="checkbox"
+                                                checked={!!settings.autoReload}
+                                                onChange={e => this.handleSettingChange(null, 'autoReload', e.target.checked)}
+                                                style={{ marginRight: '5px' }}
+                                            />
+                                            Auto-reload CNCjs after layout change
+                                        </Label>
+                                    </div>
                                     <div style={{ marginBottom: '10px' }}>
                                         <Label>Bridge URL</Label>
                                         <Input type="text" value={settings.bridgeUrl} onChange={e => this.handleSettingChange(null, 'bridgeUrl', e.target.value)} />
