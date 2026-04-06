@@ -222,7 +222,8 @@ class App extends PureComponent {
         this.addControllerEvents();
         // Delay to allow CNCjs to initialize
         setTimeout(() => {
-            this.applyLayout(this.state.currentMode);
+            // DO NOT auto-reload on mount to avoid infinite reload loop
+            this.applyLayout(this.state.currentMode, false, true);
         }, 1000);
     }
 
@@ -364,7 +365,7 @@ class App extends PureComponent {
         fetch(url).catch(err => console.error('Bridge request failed:', err));
     };
 
-    applyLayout = (mode, forceReload = false) => {
+    applyLayout = (mode, forceReload = false, skipReload = false) => {
         const { settings } = this.state;
         const { token } = this.props;
         const layout = settings[mode.toLowerCase()].layout;
@@ -494,7 +495,7 @@ class App extends PureComponent {
 
         setTimeout(() => {
             this.setState({ applyingLayout: false });
-            if (forceReload || settings.autoReload) {
+            if (!skipReload && (forceReload || settings.autoReload)) {
                 window.parent.location.reload();
             }
         }, 1000);
