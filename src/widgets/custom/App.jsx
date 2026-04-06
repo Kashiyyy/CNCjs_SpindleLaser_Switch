@@ -375,67 +375,109 @@ class App extends PureComponent {
         console.log(`[Debug] Applying layout for ${mode}:`, layout);
         this.setState({ applyingLayout: true });
 
-        // We use the controller's socket to get and set the configuration
-        // because the REST API and postMessage failed in the user's environment.
+        // Update parent's localStorage directly if possible (same-origin)
+        try {
+            console.log('[Debug] Attempting to access parent localStorage');
+            const parentStorage = window.parent.localStorage;
+            if (parentStorage) {
+                // Common CNCjs localStorage keys
+                const keys = ['cncjs-app', 'cncjs'];
+                let found = false;
+
+                keys.forEach(key => {
+                    const saved = parentStorage.getItem(key);
+                    if (saved) {
+                        console.log(`[Debug] Found CNCjs state in localStorage key: ${key}`);
+                        try {
+                            const state = JSON.parse(saved);
+
+                            // Initialize paths if they don't exist
+                            if (!get(state, 'state.workspace.container.primary')) {
+                                state.state = state.state || {};
+                                state.state.workspace = state.state.workspace || {};
+                                state.state.workspace.container = state.state.workspace.container || {};
+                                state.state.workspace.container.primary = { show: true, widgets: [] };
+                                state.state.workspace.container.secondary = { show: true, widgets: [] };
+                                state.state.workspace.container.default = { widgets: ['visualizer'] };
+                            }
+
+                            const primary = []; // Left side
+                            const secondary = []; // Right side
+                            const defaultContainer = get(state, 'state.workspace.container.default.widgets', []);
+
+                            layout.forEach(item => {
+                                if (!item.visible) return;
+                                if (item.side === 'left') {
+                                    primary.push(item.id);
+                                } else {
+                                    secondary.push(item.id);
+                                }
+                            });
+
+                            // Ensure widgets are only in ONE container. Remove from 'default' if present in others
+                            const allAssigned = [...primary, ...secondary];
+                            const filteredDefault = defaultContainer.filter(id => !allAssigned.includes(id));
+
+                            // Safety: Ensure 'custom' widget (this widget) is always present
+                            if (!primary.includes('custom') && !secondary.includes('custom')) {
+                                secondary.push('custom');
+                            }
+
+                            console.log('[Debug] Updating localStorage state');
+                            state.state.workspace.container.primary.widgets = primary;
+                            state.state.workspace.container.secondary.widgets = secondary;
+                            state.state.workspace.container.default.widgets = filteredDefault;
+
+                            parentStorage.setItem(key, JSON.stringify(state));
+                            console.log('[Debug] localStorage updated successfully');
+                            found = true;
+                        } catch (e) {
+                            console.error(`[Debug] Error parsing localStorage key ${key}:`, e);
+                        }
+                    }
+                });
+
+                if (!found) {
+                    console.warn('[Debug] No CNCjs state found in parent localStorage keys:', keys);
+                    console.log('[Debug] Available keys:', Object.keys(parentStorage));
+                }
+            }
+        } catch (err) {
+            console.warn('[Debug] Cannot access parent localStorage (cross-origin or blocked):', err);
+        }
+
+        // We also use the controller's socket as a fallback/secondary method
         if (controller.socket) {
-            console.log('[Debug] Socket connection found, requesting config');
-
-            // Note: CNCjs socket events for config are usually 'config:get' and 'config:set'
             controller.socket.emit('config:get', (config) => {
-                console.log('[Debug] Received config via socket:', JSON.stringify(config, null, 2));
-
                 try {
-                    // Update workspace layout
-                    const primary = []; // Left side
-                    const secondary = []; // Right side
+                    const primary = [];
+                    const secondary = [];
                     const defaultContainer = get(config, 'state.workspace.container.default.widgets', []);
 
                     layout.forEach(item => {
                         if (!item.visible) return;
-                        if (item.side === 'left') {
-                            primary.push(item.id);
-                        } else {
-                            secondary.push(item.id);
-                        }
+                        if (item.side === 'left') primary.push(item.id);
+                        else secondary.push(item.id);
                     });
 
-                    // Ensure widgets are only in ONE container. Remove from 'default' if present in others
                     const allAssigned = [...primary, ...secondary];
                     const filteredDefault = defaultContainer.filter(id => !allAssigned.includes(id));
-
-                    // Safety: Ensure 'custom' widget (this widget) is always present
-                    if (!primary.includes('custom') && !secondary.includes('custom')) {
-                        secondary.push('custom');
-                    }
-
-                    console.log('[Debug] New Primary (Left):', primary);
-                    console.log('[Debug] New Secondary (Right):', secondary);
+                    if (!primary.includes('custom') && !secondary.includes('custom')) secondary.push('custom');
 
                     if (config && config.state && config.state.workspace && config.state.workspace.container) {
                         config.state.workspace.container.primary.widgets = primary;
                         config.state.workspace.container.secondary.widgets = secondary;
                         config.state.workspace.container.default.widgets = filteredDefault;
-
-                        console.log('[Debug] Emitting config:set via socket');
-                        controller.socket.emit('config:set', config, (err) => {
-                            if (err) {
-                                console.error('[Debug] Error from config:set ack:', err);
-                            } else {
-                                console.log('[Debug] Config:set ack received (success)');
-                            }
-                        });
-                    } else {
-                        console.error('[Debug] Invalid config structure received via socket');
+                        controller.socket.emit('config:set', config);
+                        console.log('[Debug] Socket config:set emitted');
                     }
                 } catch (err) {
-                    console.error('[Debug] Error processing socket config:', err);
+                    console.error('[Debug] Socket config error:', err);
                 }
             });
-        } else {
-            console.warn('[Debug] No socket connection available for persistent layout update');
         }
 
-        // We still send postMessage as a backup for immediate (but potentially non-persistent) UI changes
+        // immediate UI feedback
         layout.forEach((item, index) => {
             setTimeout(() => {
                 window.parent.postMessage({
@@ -445,19 +487,12 @@ class App extends PureComponent {
                         payload: { id: item.id, widget: item.id, visible: item.visible }
                     }
                 }, '*');
-
-                // Try format 2: explicit show/hide
-                window.parent.postMessage({
-                    token: token,
-                    action: item.visible ? 'widget:show' : 'widget:hide',
-                    payload: { id: item.id, widget: item.id }
-                }, '*');
-            }, index * 50);
+            }, index * 20);
         });
 
         setTimeout(() => {
             this.setState({ applyingLayout: false });
-        }, 2000);
+        }, 1000);
     };
 
     switchToLaser = () => {
