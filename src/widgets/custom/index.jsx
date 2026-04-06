@@ -2,7 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
 
-export const render = () => {
+export const render = (props) => {
   let rootElement = document.getElementById('root');
 
   // If the element doesn't exist, create and append it
@@ -15,7 +15,7 @@ export const render = () => {
   const root = createRoot(rootElement);
   root.render(
     <React.StrictMode>
-      <App />
+      <App {...props} />
     </React.StrictMode>
   );
 };
