@@ -382,7 +382,7 @@ class App extends PureComponent {
 
             // Note: CNCjs socket events for config are usually 'config:get' and 'config:set'
             controller.socket.emit('config:get', (config) => {
-                console.log('[Debug] Received config via socket:', config);
+                console.log('[Debug] Received config via socket:', JSON.stringify(config, null, 2));
 
                 try {
                     // Update workspace layout
@@ -411,14 +411,19 @@ class App extends PureComponent {
                     console.log('[Debug] New Primary (Left):', primary);
                     console.log('[Debug] New Secondary (Right):', secondary);
 
-                    if (config.state && config.state.workspace && config.state.workspace.container) {
+                    if (config && config.state && config.state.workspace && config.state.workspace.container) {
                         config.state.workspace.container.primary.widgets = primary;
                         config.state.workspace.container.secondary.widgets = secondary;
                         config.state.workspace.container.default.widgets = filteredDefault;
 
                         console.log('[Debug] Emitting config:set via socket');
-                        controller.socket.emit('config:set', config);
-                        console.log('[Debug] Config sent successfully');
+                        controller.socket.emit('config:set', config, (err) => {
+                            if (err) {
+                                console.error('[Debug] Error from config:set ack:', err);
+                            } else {
+                                console.log('[Debug] Config:set ack received (success)');
+                            }
+                        });
                     } else {
                         console.error('[Debug] Invalid config structure received via socket');
                     }
@@ -440,12 +445,19 @@ class App extends PureComponent {
                         payload: { id: item.id, widget: item.id, visible: item.visible }
                     }
                 }, '*');
-            }, index * 20);
+
+                // Try format 2: explicit show/hide
+                window.parent.postMessage({
+                    token: token,
+                    action: item.visible ? 'widget:show' : 'widget:hide',
+                    payload: { id: item.id, widget: item.id }
+                }, '*');
+            }, index * 50);
         });
 
         setTimeout(() => {
             this.setState({ applyingLayout: false });
-        }, 1000);
+        }, 2000);
     };
 
     switchToLaser = () => {
@@ -504,11 +516,14 @@ class App extends PureComponent {
 
         return (
             <div>
-                <div style={{ marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '5px' }}>
                     <span style={{ fontSize: '11px', color: '#666' }}>Configure {mode} Layout</span>
-                    <IconButton disabled={applyingLayout} onClick={() => this.applyLayout(mode)}>
-                        {applyingLayout ? 'Applying...' : 'Apply Layout Now'}
-                    </IconButton>
+                    <div style={{ display: 'flex', gap: '5px' }}>
+                        <IconButton onClick={() => window.parent.location.reload()}>🔄 Reload CNCjs</IconButton>
+                        <IconButton disabled={applyingLayout} onClick={() => this.applyLayout(mode)}>
+                            {applyingLayout ? 'Applying...' : 'Apply Layout Now'}
+                        </IconButton>
+                    </div>
                 </div>
                 {layout.map((item, index) => {
                     const widgetInfo = WIDGETS.find(w => w.id === item.id) || { name: item.id };
